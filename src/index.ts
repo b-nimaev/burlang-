@@ -1,7 +1,6 @@
 import express from "express";
-import { Context, Scenes, session, Telegraf } from "telegraf";
+import { Context, Markup, Scenes, session, Telegraf } from "telegraf";
 import dotenv from "dotenv";
-import path from "path"; // Модуль path может понадобиться для работы с путями
 import bodyParser from "body-parser";
 import morgan from "morgan";
 
@@ -33,26 +32,20 @@ const setWebhook = async (url: string) => {
 
 // Конфигурация для разных режимов
 if (mode === "development") {
-  // В режиме разработки используется ngrok для получения публичного URL
   const fetchNgrokUrl = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:4040/api/tunnels"); // Проверяем URL ngrok
+      const res = await fetch("http://127.0.0.1:4040/api/tunnels");
       const json = await res.json();
-      const secureTunnel = json.tunnels[0].public_url; // Получаем публичный URL
+      const secureTunnel = json.tunnels[0].public_url;
       console.log(`Ngrok URL: ${secureTunnel}`);
-
-      await setWebhook(secureTunnel); // Устанавливаем вебхук через ngrok URL
+      await setWebhook(secureTunnel);
     } catch (error) {
       console.error("Ошибка при получении URL из ngrok:", error);
     }
   };
-
-  fetchNgrokUrl(); // Вызываем функцию получения URL из ngrok
+  fetchNgrokUrl();
 } else if (mode === "production") {
-  // В продакшн-режиме используется site_url из переменных окружения
   const siteUrl = process.env.site_url || "https://example.com";
-
-  // Объединяем site_url и secret_path правильно
   setWebhook(`${siteUrl}${secretPath.startsWith("/") ? "" : "/"}${secretPath}`);
 }
 
@@ -67,38 +60,62 @@ app.listen(port, () => {
   console.log(`Сервер запущен на порту ${port} в режиме ${mode}`);
 });
 
+// Создание инлайн-кнопок для главной сцены
+const homeKeyboard = Markup.inlineKeyboard([
+  [Markup.button.callback("Словарь", "dictionary")],
+  [Markup.button.callback("Предложения", "sentences")],
+  [Markup.button.callback("Личный кабинет", "dashboard")],
+  [Markup.button.callback("Самоучитель", "self-teacher")],
+]);
+
+// Функция для отправки или редактирования сообщений
+const sendOrEditMessage = async (ctx: MyContext, text: string, buttons: ReturnType<typeof Markup.inlineKeyboard>) => {
+  if (ctx.updateType === 'callback_query') {
+    try {
+      await ctx.editMessageText(text, buttons);
+    } catch (err) {
+      // Игнорируем ошибку, если сообщение уже было отредактировано
+    }
+  } else {
+    await ctx.reply(text, buttons);
+  }
+};
+
 // Создание основной сцены (главная сцена)
 const homeScene = new Scenes.BaseScene<MyContext>('home');
-homeScene.enter((ctx) => ctx.reply('Вы находитесь на главной странице.'));
-homeScene.hears('Словарь', (ctx) => ctx.scene.enter('dictionary'));
-homeScene.hears('Предложения', (ctx) => ctx.scene.enter('sentences'));
-homeScene.hears('Личный кабинет', (ctx) => ctx.scene.enter('dashboard'));
-homeScene.hears('Самоучитель', (ctx) => ctx.scene.enter('self-teacher'));
-homeScene.leave((ctx) => ctx.reply('Покидаем главную сцену.'));
+homeScene.enter((ctx) => sendOrEditMessage(ctx, 'Вы находитесь на главной странице.', homeKeyboard));
 
 // Создание сцены "Словарь"
 const dictionaryScene = new Scenes.BaseScene<MyContext>('dictionary');
-dictionaryScene.enter((ctx) => ctx.reply('Добро пожаловать в словарь. Введите слово для поиска.'));
-dictionaryScene.leave((ctx) => ctx.reply('Вы покинули словарь.'));
-dictionaryScene.hears('Главная', (ctx) => ctx.scene.enter('home'));
+dictionaryScene.enter((ctx) => {
+  sendOrEditMessage(ctx, 'Добро пожаловать в словарь. Введите слово для поиска.', Markup.inlineKeyboard([
+    [Markup.button.callback('Главная', 'home')]
+  ]));
+});
 
 // Создание сцены "Предложения"
 const sentencesScene = new Scenes.BaseScene<MyContext>('sentences');
-sentencesScene.enter((ctx) => ctx.reply('Добро пожаловать в раздел предложений.'));
-sentencesScene.leave((ctx) => ctx.reply('Вы покинули раздел предложений.'));
-sentencesScene.hears('Главная', (ctx) => ctx.scene.enter('home'));
+sentencesScene.enter((ctx) => {
+  sendOrEditMessage(ctx, 'Добро пожаловать в раздел предложений.', Markup.inlineKeyboard([
+    [Markup.button.callback('Главная', 'home')]
+  ]));
+});
 
 // Создание сцены "Личный кабинет"
 const dashboardScene = new Scenes.BaseScene<MyContext>('dashboard');
-dashboardScene.enter((ctx) => ctx.reply('Вы находитесь в личном кабинете.'));
-dashboardScene.leave((ctx) => ctx.reply('Вы покинули личный кабинет.'));
-dashboardScene.hears('Главная', (ctx) => ctx.scene.enter('home'));
+dashboardScene.enter((ctx) => {
+  sendOrEditMessage(ctx, 'Вы находитесь в личном кабинете.', Markup.inlineKeyboard([
+    [Markup.button.callback('Главная', 'home')]
+  ]));
+});
 
 // Создание сцены "Самоучитель"
 const selfTeacherScene = new Scenes.BaseScene<MyContext>('self-teacher');
-selfTeacherScene.enter((ctx) => ctx.reply('Добро пожаловать в самоучитель.'));
-selfTeacherScene.leave((ctx) => ctx.reply('Вы покинули самоучитель.'));
-selfTeacherScene.hears('Главная', (ctx) => ctx.scene.enter('home'));
+selfTeacherScene.enter((ctx) => {
+  sendOrEditMessage(ctx, 'Добро пожаловать в самоучитель.', Markup.inlineKeyboard([
+    [Markup.button.callback('Главная', 'home')]
+  ]));
+});
 
 // Создание Stage для управления сценами
 const stage = new Scenes.Stage<MyContext>([
@@ -106,11 +123,18 @@ const stage = new Scenes.Stage<MyContext>([
   dictionaryScene,
   sentencesScene,
   dashboardScene,
-  selfTeacherScene
-], {
-    default: 'home'
-});
+  selfTeacherScene,
+]);
 
 // Использование middleware сессий и сцен
 bot.use(session());
 bot.use(stage.middleware());
+
+bot.start((ctx) => ctx.scene.enter("home"));
+
+// Обработка callback для инлайн-кнопок
+bot.action("home", (ctx) => ctx.scene.enter("home"));
+bot.action("dictionary", (ctx) => ctx.scene.enter("dictionary"));
+bot.action("sentences", (ctx) => ctx.scene.enter("sentences"));
+bot.action("dashboard", (ctx) => ctx.scene.enter("dashboard"));
+bot.action("self-teacher", (ctx) => ctx.scene.enter("self-teacher"));
