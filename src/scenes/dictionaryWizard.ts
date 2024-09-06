@@ -1,6 +1,7 @@
 import { Composer, Scenes, Markup } from "telegraf";
 import { MyContext } from "../types/MyContext";
 import { sendOrEditMessage } from "..";
+import { ISuggestedWordModel } from "../models/SuggestedWordModel";
 
 // Описываем тип для состояния Wizard-сцены
 interface WizardState {
@@ -101,6 +102,7 @@ const dictionaryKeyboard = Markup.inlineKeyboard([
     Markup.button.callback("Бурятский", "select_buryat"),
   ],
   [Markup.button.callback("Предложить слово", "suggest_word")],
+  [Markup.button.callback("Добавить переводы", "add_translations")], // Новая кнопка
   [Markup.button.callback("Назад", "home")],
 ]);
 
@@ -172,5 +174,181 @@ dictionaryWizard.action("home", async (ctx) => {
 dictionaryWizard.action("back", async (ctx) => {
     ctx.scene.enter("dictionary-wizard");
 })
+
+// Обработчик для кнопки "Добавить переводы"
+dictionaryWizard.action("add_translations", async (ctx) => {
+  const page = ctx.session.page || 1; // Инициализируем page если он еще не определён
+  const limit = 10; // Количество элементов на страницу
+
+  await fetchWordsOnApproval(ctx, page, limit);
+});
+
+// Функция для отправки запроса к API и отображения результата
+async function fetchWordsOnApproval(ctx: MyContext, page = 1, limit = 10) {
+  try {
+    const apiUrl = process.env.api_url;
+    const response = await fetch(
+      `${apiUrl}/vocabulary/get-words-on-approval?page=${page}&limit=${limit}`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${process.env.admintoken}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    const data = await response.json();
+
+    if (response.ok) {
+      const { words, total_count } = data;
+
+      // Формируем строку с результатами
+      let resultMessage = `Результаты ${(page * limit) - 10 + 1}-${Math.min(
+        page * limit,
+        total_count
+      )} из ${total_count}:\n\n`;
+      words.forEach((word: ISuggestedWordModel, index: number) => {
+        resultMessage += `${index + 1}. ${word.text} – ${word.language}\n`;
+      });
+
+      // Создаем кнопки в два горизонтальных ряда (по 5 кнопок на ряд)
+      const selectionButtons = [
+        words
+          .slice(0, 5)
+          .map((word: ISuggestedWordModel, index: number) =>
+            Markup.button.callback(`${index + 1}`, `select_word_${index}`)
+          ), // Первый ряд (1-5)
+        words
+          .slice(5, 10)
+          .map((word: ISuggestedWordModel, index: number) =>
+            Markup.button.callback(`${index + 6}`, `select_word_${index + 5}`)
+          ), // Второй ряд (6-10)
+      ];
+
+      // Добавляем кнопки для пагинации
+      const paginationButtons = [
+        Markup.button.callback("⬅️", "prev_page"),
+        Markup.button.callback("Назад", "back"),
+        Markup.button.callback("➡️", "next_page"),
+      ];
+
+      const selectionKeyboard = Markup.inlineKeyboard([
+        ...selectionButtons, // Кнопки для выбора слов (два ряда по 5)
+        paginationButtons, // Кнопки для пагинации
+      ]);
+
+      // Сохраняем текущую страницу в сессии
+      ctx.session.page = page;
+
+      // Отправляем сообщение с результатами и клавиатурой
+      await sendOrEditMessage(ctx, resultMessage, selectionKeyboard);
+    } else {
+      await ctx.reply("Ошибка при получении данных.");
+    }
+  } catch (error) {
+    console.error(error);
+    await ctx.reply("Произошла ошибка при запросе.");
+  }
+}
+
+
+
+// Обработчики для выбора слова по индексу
+for (let i = 0; i < 10; i++) {
+  dictionaryWizard.action(`select_word_${i}`, async (ctx) => {
+    const page = ctx.session.page || 1;
+    const limit = 10;
+
+    // Получаем данные заново, чтобы выбрать правильный элемент
+    const apiUrl = process.env.api_url;
+    const response = await fetch(`${apiUrl}/vocabulary/get-words-on-approval?page=${page}&limit=${limit}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${process.env.admintoken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    const data = await response.json();
+
+    if (response.ok) {
+      const selectedWord = data.words[i]; // Выбираем нужное слово по индексу
+
+      // Выводим выбранное слово пользователю
+      await ctx.reply(`Вы выбрали слово: ${selectedWord.text} (${selectedWord.language})`);
+    } else {
+      await ctx.reply("Ошибка при получении данных.");
+    }
+  });
+}
+
+
+// Обработчик для кнопок пагинации
+dictionaryWizard.action(/^page_\d+$/, async (ctx) => {
+  const page = parseInt(ctx.match[0].split('_')[1]);
+  ctx.session.page = page 
+  await fetchWordsOnApproval(ctx, page, 10);
+});
+
+// Обработчик для кнопки "⬅️" (предыдущая страница)
+dictionaryWizard.action("prev_page", async (ctx) => {
+  // Если значение страницы не определено, инициализируем его как 1
+  const currentPage = ctx.session.page ? ctx.session.page : 1;
+
+  // Переход на предыдущую страницу, минимальное значение — 1
+  const prevPage = Math.max(1, currentPage - 1);
+
+  // Обновляем значение текущей страницы в сессии
+  ctx.session.page = prevPage;
+
+  if (currentPage === 1) {
+    ctx.answerCbQuery()
+    return false
+  }
+
+  // Запрашиваем данные для предыдущей страницы
+  await fetchWordsOnApproval(ctx, prevPage, 10);
+});
+
+dictionaryWizard.action("next_page", async (ctx) => {
+  // Получаем данные о текущей странице из сессии
+  const currentPage = ctx.session.page ? ctx.session.page : 1;
+  const limit = 10;
+
+  // Запрашиваем данные для текущей страницы, чтобы узнать общее количество слов
+  const apiUrl = process.env.api_url;
+  const response = await fetch(
+    `${apiUrl}/vocabulary/get-words-on-approval?page=${currentPage}&limit=${limit}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${process.env.admintoken}`,
+        "Content-Type": "application/json",
+      },
+    }
+  );
+  const data = await response.json();
+
+  if (response.ok) {
+    const totalWords = data.total_count; // Общее количество слов
+    const totalPages = Math.ceil(totalWords / limit); // Общее количество страниц
+
+    // Проверяем, находится ли пользователь на последней странице
+    if (currentPage >= totalPages) {
+      // Сообщаем пользователю, что он на последней странице
+      await ctx.answerCbQuery("Вы уже на последней странице.");
+      return false;
+    }
+
+    // Если это не последняя страница, переходим на следующую
+    const nextPage = currentPage + 1;
+    ctx.session.page = nextPage;
+
+    // Запрашиваем данные для следующей страницы
+    await fetchWordsOnApproval(ctx, nextPage, limit);
+  } else {
+    await ctx.reply("Ошибка при получении данных.");
+  }
+});
+
 
 export default dictionaryWizard;
