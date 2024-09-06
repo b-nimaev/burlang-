@@ -3,12 +3,8 @@ import { Context, Markup, Scenes, session, Telegraf } from "telegraf";
 import dotenv from "dotenv";
 import bodyParser from "body-parser";
 import morgan from "morgan";
-
-// Создаем интерфейс для пользовательского контекста с учетом сцен
-interface MyContext extends Context {
-  scene: Scenes.SceneContextScene<MyContext>;
-  session: Scenes.SceneSession<MyContext>;
-}
+import { MyContext } from "./types/MyContext";
+import dictionaryWizard from "./scenes/dictionaryWizard";
 
 dotenv.config(); // Загружаем переменные окружения
 
@@ -69,29 +65,33 @@ const homeKeyboard = Markup.inlineKeyboard([
 ]);
 
 // Функция для отправки или редактирования сообщений
-const sendOrEditMessage = async (ctx: MyContext, text: string, buttons: ReturnType<typeof Markup.inlineKeyboard>) => {
+export const sendOrEditMessage = async (ctx: MyContext, text: string, buttons?: ReturnType<typeof Markup.inlineKeyboard>) => {
+  const inlineKeyboard = buttons?.reply_markup?.inline_keyboard || []; // Убедитесь, что кнопки существуют или используем пустой массив
+
   if (ctx.updateType === 'callback_query') {
     try {
-      await ctx.editMessageText(text, buttons);
+      await ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: {
+        inline_keyboard: inlineKeyboard // Передаем массив кнопок
+      } });
     } catch (err) {
       // Игнорируем ошибку, если сообщение уже было отредактировано
     }
   } else {
-    await ctx.reply(text, buttons);
+    await ctx.reply(text, { parse_mode: 'HTML', reply_markup: { inline_keyboard: inlineKeyboard } });
   }
 };
 
+
 // Создание основной сцены (главная сцена)
 const homeScene = new Scenes.BaseScene<MyContext>('home');
-homeScene.enter((ctx) => sendOrEditMessage(ctx, 'Вы находитесь на главной странице.', homeKeyboard));
-
-// Создание сцены "Словарь"
-const dictionaryScene = new Scenes.BaseScene<MyContext>('dictionary');
-dictionaryScene.enter((ctx) => {
-  sendOrEditMessage(ctx, 'Добро пожаловать в словарь. Введите слово для поиска.', Markup.inlineKeyboard([
-    [Markup.button.callback('Главная', 'home')]
-  ]));
-});
+homeScene.enter((ctx) =>
+  sendOrEditMessage(
+    ctx,
+    `<b>Самоучитель бурятского языка</b>\n\nКаждое взаимодействие с ботом, 
+влияет на сохранение и дальнейшее развитие Бурятского языка\n\nВыберите раздел, чтобы приступить`,
+    homeKeyboard
+  )
+);
 
 // Создание сцены "Предложения"
 const sentencesScene = new Scenes.BaseScene<MyContext>('sentences');
@@ -120,7 +120,7 @@ selfTeacherScene.enter((ctx) => {
 // Создание Stage для управления сценами
 const stage = new Scenes.Stage<MyContext>([
   homeScene,
-  dictionaryScene,
+  dictionaryWizard,
   sentencesScene,
   dashboardScene,
   selfTeacherScene,
@@ -134,7 +134,7 @@ bot.start((ctx) => ctx.scene.enter("home"));
 
 // Обработка callback для инлайн-кнопок
 bot.action("home", (ctx) => ctx.scene.enter("home"));
-bot.action("dictionary", (ctx) => ctx.scene.enter("dictionary"));
+bot.action("dictionary", (ctx) => ctx.scene.enter("dictionary-wizard"));
 bot.action("sentences", (ctx) => ctx.scene.enter("sentences"));
 bot.action("dashboard", (ctx) => ctx.scene.enter("dashboard"));
 bot.action("self-teacher", (ctx) => ctx.scene.enter("self-teacher"));
