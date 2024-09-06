@@ -65,25 +65,42 @@ const homeKeyboard = Markup.inlineKeyboard([
 ]);
 
 // Функция для отправки или редактирования сообщений
-export const sendOrEditMessage = async (ctx: MyContext, text: string, buttons?: ReturnType<typeof Markup.inlineKeyboard>) => {
+export const sendOrEditMessage = async (
+  ctx: MyContext,
+  text: string,
+  buttons?: ReturnType<typeof Markup.inlineKeyboard>,
+  reply?: boolean
+) => {
   const inlineKeyboard = buttons?.reply_markup?.inline_keyboard || []; // Убедитесь, что кнопки существуют или используем пустой массив
 
-  if (ctx.updateType === 'callback_query') {
-    try {
-      await ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: {
-        inline_keyboard: inlineKeyboard // Передаем массив кнопок
-      } });
-    } catch (err) {
-      // Игнорируем ошибку, если сообщение уже было отредактировано
-    }
+  if (reply) {
+    await ctx.reply(text, {
+      parse_mode: "HTML",
+      reply_markup: { inline_keyboard: inlineKeyboard },
+    });
   } else {
-    await ctx.reply(text, { parse_mode: 'HTML', reply_markup: { inline_keyboard: inlineKeyboard } });
+    if (ctx.updateType === "callback_query") {
+      try {
+        await ctx.editMessageText(text, {
+          parse_mode: "HTML",
+          reply_markup: {
+            inline_keyboard: inlineKeyboard, // Передаем массив кнопок
+          },
+        });
+      } catch (err) {
+        // Игнорируем ошибку, если сообщение уже было отредактировано
+      }
+    } else {
+      await ctx.reply(text, {
+        parse_mode: "HTML",
+        reply_markup: { inline_keyboard: inlineKeyboard },
+      });
+    }
   }
 };
 
-
 // Создание основной сцены (главная сцена)
-const homeScene = new Scenes.BaseScene<MyContext>('home');
+const homeScene = new Scenes.BaseScene<MyContext>("home");
 homeScene.enter((ctx) =>
   sendOrEditMessage(
     ctx,
@@ -94,27 +111,33 @@ homeScene.enter((ctx) =>
 );
 
 // Создание сцены "Предложения"
-const sentencesScene = new Scenes.BaseScene<MyContext>('sentences');
+const sentencesScene = new Scenes.BaseScene<MyContext>("sentences");
 sentencesScene.enter((ctx) => {
-  sendOrEditMessage(ctx, 'Добро пожаловать в раздел предложений.', Markup.inlineKeyboard([
-    [Markup.button.callback('Главная', 'home')]
-  ]));
+  sendOrEditMessage(
+    ctx,
+    "Добро пожаловать в раздел предложений.",
+    Markup.inlineKeyboard([[Markup.button.callback("Главная", "home")]])
+  );
 });
 
 // Создание сцены "Личный кабинет"
-const dashboardScene = new Scenes.BaseScene<MyContext>('dashboard');
+const dashboardScene = new Scenes.BaseScene<MyContext>("dashboard");
 dashboardScene.enter((ctx) => {
-  sendOrEditMessage(ctx, 'Вы находитесь в личном кабинете.', Markup.inlineKeyboard([
-    [Markup.button.callback('Главная', 'home')]
-  ]));
+  sendOrEditMessage(
+    ctx,
+    "Вы находитесь в личном кабинете.",
+    Markup.inlineKeyboard([[Markup.button.callback("Главная", "home")]])
+  );
 });
 
 // Создание сцены "Самоучитель"
-const selfTeacherScene = new Scenes.BaseScene<MyContext>('self-teacher');
+const selfTeacherScene = new Scenes.BaseScene<MyContext>("self-teacher");
 selfTeacherScene.enter((ctx) => {
-  sendOrEditMessage(ctx, 'Добро пожаловать в самоучитель.', Markup.inlineKeyboard([
-    [Markup.button.callback('Главная', 'home')]
-  ]));
+  sendOrEditMessage(
+    ctx,
+    "Добро пожаловать в самоучитель.",
+    Markup.inlineKeyboard([[Markup.button.callback("Главная", "home")]])
+  );
 });
 
 // Создание Stage для управления сценами

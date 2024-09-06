@@ -190,7 +190,7 @@ dictionaryWizard.action("consider_suggested_words", async (ctx) => {
 });
 
 // Функция для отправки запроса к API и отображения результата
-async function fetchWordsOnApproval(ctx: MyContext, page = 1, limit = 10) {
+async function fetchWordsOnApproval(ctx: MyContext, page = 1, limit = 10, reply?: boolean) {
   try {
     const apiUrl = process.env.api_url;
     const response = await fetch(
@@ -247,7 +247,7 @@ async function fetchWordsOnApproval(ctx: MyContext, page = 1, limit = 10) {
       ctx.session.page = page;
 
       // Отправляем сообщение с результатами и клавиатурой
-      await sendOrEditMessage(ctx, resultMessage, selectionKeyboard);
+      await sendOrEditMessage(ctx, resultMessage, selectionKeyboard, reply);
     } else {
       await ctx.reply("Ошибка при получении данных.");
     }
@@ -286,7 +286,8 @@ for (let i = 0; i < 10; i++) {
       const actionKeyboard = Markup.inlineKeyboard([
         Markup.button.callback("Принять", "approve_word"),
         Markup.button.callback("Отклонить", "reject_word"),
-        Markup.button.callback("Пропустить", "skip_word"),
+        // Ошибся :)
+        Markup.button.callback("Назад", "skip_word"),
       ]);
 
       await ctx.reply("Что вы хотите сделать с этим словом?", actionKeyboard);
@@ -297,6 +298,10 @@ for (let i = 0; i < 10; i++) {
   });
 }
 
+dictionaryWizard.action("skip_word", async (ctx) => {
+  const currentPage = ctx.session.page ? ctx.session.page : 1;
+  await fetchWordsOnApproval(ctx, currentPage)
+})
 dictionaryWizard.action("approve_word", async (ctx) => {
   const wordId = ctx.wizard.state.selectedWordId;
   const userId = ctx.from?.id;
@@ -322,16 +327,10 @@ dictionaryWizard.action("approve_word", async (ctx) => {
 
     if (response.ok) {
       await ctx.editMessageText("Слово успешно принято и добавлено в словарь.");
-      const inlineKeyboard = dictionaryKeyboard?.reply_markup?.inline_keyboard || []; // Убедитесь, что кнопки существуют или используем пустой массив
-      await ctx.reply(
-        "<b>Словарь</b> \n\nВыберите язык для перевода или предложите слово для дальнейшего перевода нашим сообществом",
-        {
-          parse_mode: "HTML",
-          reply_markup: {
-            inline_keyboard: inlineKeyboard, // Передаем массив кнопок
-          },
-        }
-      );
+      const page = ctx.session.page || 1; // Инициализируем page если он еще не определён
+      const limit = 10; // Количество элементов на страницу
+
+      await fetchWordsOnApproval(ctx, page, limit, true);
     } else {
       const errorData = await response.json();
       await ctx.reply(`Ошибка при принятии слова: ${errorData.message}`);
@@ -339,6 +338,51 @@ dictionaryWizard.action("approve_word", async (ctx) => {
   } catch (error) {
     console.error("Ошибка при принятии слова:", error);
     await ctx.reply("Произошла ошибка при принятии слова.");
+  }
+
+  return ctx.wizard.selectStep(2); // Возвращаемся к просмотру предложенных слов
+});
+dictionaryWizard.action("reject_word", async (ctx) => {
+  const wordId = ctx.wizard.state.selectedWordId; // ID выбранного слова
+  const userId = ctx.from?.id; // ID пользователя в Телеграм
+
+  if (!wordId || !userId) {
+    await ctx.reply("Ошибка: отсутствуют данные для отклонения слова.");
+    return ctx.wizard.selectStep(2); // Возвращаемся к предыдущему шагу
+  }
+
+  try {
+    const apiUrl = process.env.api_url; // URL вашего API
+    const response = await fetch(
+      `${apiUrl}/vocabulary/decline-suggested-word`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.admintoken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          suggestedWordId: wordId, // ID отклоняемого слова
+          telegram_user_id: userId, // ID текущего пользователя
+        }),
+      }
+    );
+
+    if (response.ok) {
+      await ctx.editMessageText(
+        `Слово успешно отклонено и добавлено в архив отклонённых слов.`
+      );
+      const page = ctx.session.page || 1; // Инициализируем page если он еще не определён
+      const limit = 10; // Количество элементов на страницу
+
+      await fetchWordsOnApproval(ctx, page, limit, true);
+    } else {
+      const errorData = await response.json();
+      await ctx.reply(`Ошибка при отклонении слова: ${errorData.message}`);
+    }
+  } catch (error) {
+    console.error("Ошибка при отклонении слова:", error);
+    await ctx.reply("Произошла ошибка при отклонении слова.");
   }
 
   return ctx.wizard.selectStep(2); // Возвращаемся к просмотру предложенных слов
