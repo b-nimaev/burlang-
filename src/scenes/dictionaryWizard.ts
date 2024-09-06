@@ -7,6 +7,7 @@ import { ISuggestedWordModel } from "../models/SuggestedWordModel";
 interface WizardState {
   language?: string;
   suggestion?: boolean;
+  selectedWordId?: string; // Добавляем свойство для хранения _id выбранного слова
 }
 
 // Обработчик для начальной сцены
@@ -93,6 +94,11 @@ const dictionaryWizard = new Scenes.WizardScene<
     } else {
       await ctx.reply("Пожалуйста, введите текстовое сообщение.");
     }
+  },
+
+  // Шаг 3: Принятие, отклонение или пропуск слова
+  async (ctx) => {
+    await ctx.reply("Что вы хотите сделать с этим словом?");
   }
 );
 
@@ -102,7 +108,7 @@ const dictionaryKeyboard = Markup.inlineKeyboard([
     Markup.button.callback("Бурятский", "select_buryat"),
   ],
   [Markup.button.callback("Предложить слово", "suggest_word")],
-  [Markup.button.callback("Добавить переводы", "add_translations")], // Новая кнопка
+  [Markup.button.callback("Рассмотреть предложенные слова", "consider_suggested_words")], // Новая кнопка
   [Markup.button.callback("Назад", "home")],
 ]);
 
@@ -176,7 +182,7 @@ dictionaryWizard.action("back", async (ctx) => {
 })
 
 // Обработчик для кнопки "Добавить переводы"
-dictionaryWizard.action("add_translations", async (ctx) => {
+dictionaryWizard.action("consider_suggested_words", async (ctx) => {
   const page = ctx.session.page || 1; // Инициализируем page если он еще не определён
   const limit = 10; // Количество элементов на страницу
 
@@ -251,8 +257,6 @@ async function fetchWordsOnApproval(ctx: MyContext, page = 1, limit = 10) {
   }
 }
 
-
-
 // Обработчики для выбора слова по индексу
 for (let i = 0; i < 10; i++) {
   dictionaryWizard.action(`select_word_${i}`, async (ctx) => {
@@ -273,20 +277,71 @@ for (let i = 0; i < 10; i++) {
     if (response.ok) {
       const selectedWord = data.words[i]; // Выбираем нужное слово по индексу
 
-      // Выводим выбранное слово пользователю
-      await ctx.reply(`Вы выбрали слово: ${selectedWord.text} (${selectedWord.language})`);
+      // Сохраняем _id выбранного слова в сессии
+      ctx.wizard.state.selectedWordId = selectedWord._id;
+
+      // Переход на следующий шаг и предоставление кнопок действий
+      await ctx.editMessageText(`Вы выбрали слово для рассмотрения: ${selectedWord.text} (${selectedWord.language})`);
+
+      const actionKeyboard = Markup.inlineKeyboard([
+        Markup.button.callback("Принять", "approve_word"),
+        Markup.button.callback("Отклонить", "reject_word"),
+        Markup.button.callback("Пропустить", "skip_word"),
+      ]);
+
+      await ctx.reply("Что вы хотите сделать с этим словом?", actionKeyboard);
+
     } else {
       await ctx.reply("Ошибка при получении данных.");
     }
   });
 }
 
+dictionaryWizard.action("approve_word", async (ctx) => {
+  const wordId = ctx.wizard.state.selectedWordId;
+  const userId = ctx.from?.id;
 
-// Обработчик для кнопок пагинации
-dictionaryWizard.action(/^page_\d+$/, async (ctx) => {
-  const page = parseInt(ctx.match[0].split('_')[1]);
-  ctx.session.page = page 
-  await fetchWordsOnApproval(ctx, page, 10);
+  if (!wordId || !userId) {
+    await ctx.reply("Ошибка: отсутствуют данные для принятия слова.");
+    return;
+  }
+
+  try {
+    const apiUrl = process.env.api_url;
+    const response = await fetch(`${apiUrl}/vocabulary/accept-suggested-word`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.admintoken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        suggestedWordId: wordId,
+        telegram_user_id: userId,
+      }),
+    });
+
+    if (response.ok) {
+      await ctx.editMessageText("Слово успешно принято и добавлено в словарь.");
+      const inlineKeyboard = dictionaryKeyboard?.reply_markup?.inline_keyboard || []; // Убедитесь, что кнопки существуют или используем пустой массив
+      await ctx.reply(
+        "<b>Словарь</b> \n\nВыберите язык для перевода или предложите слово для дальнейшего перевода нашим сообществом",
+        {
+          parse_mode: "HTML",
+          reply_markup: {
+            inline_keyboard: inlineKeyboard, // Передаем массив кнопок
+          },
+        }
+      );
+    } else {
+      const errorData = await response.json();
+      await ctx.reply(`Ошибка при принятии слова: ${errorData.message}`);
+    }
+  } catch (error) {
+    console.error("Ошибка при принятии слова:", error);
+    await ctx.reply("Произошла ошибка при принятии слова.");
+  }
+
+  return ctx.wizard.selectStep(2); // Возвращаемся к просмотру предложенных слов
 });
 
 // Обработчик для кнопки "⬅️" (предыдущая страница)
