@@ -142,7 +142,9 @@ const dictionaryWizard = new Scenes.WizardScene<
       const language = ctx.wizard.state.language;
 
       if (language) {
-        await ctx.reply(`Перевод для "${userInput}" с ${language}: ${userInput}`);
+        await ctx.reply(
+          `Перевод для "${userInput}" с ${language}: ${userInput}`
+        );
       } else {
         await ctx.reply("Пожалуйста, выберите язык для перевода.");
       }
@@ -180,14 +182,18 @@ const dictionaryWizard = new Scenes.WizardScene<
             );
 
             if (response.ok) {
-              await ctx.reply(`Ваше предложение успешно отправлено: ${userInput}`);
+              await ctx.reply(
+                `Ваше предложение успешно отправлено: ${userInput}`
+              );
             } else {
               const errorMsg = await response.text();
               await ctx.reply(`Ошибка при отправке предложения: ${errorMsg}`);
             }
           } catch (error) {
             console.error("Ошибка при отправке:", error);
-            await ctx.reply("Произошла ошибка при отправке вашего предложения.");
+            await ctx.reply(
+              "Произошла ошибка при отправке вашего предложения."
+            );
           }
 
           return ctx.scene.enter("dictionary-wizard"); // Возврат к сцене
@@ -202,79 +208,41 @@ const dictionaryWizard = new Scenes.WizardScene<
 
   // Шаг 3: Модерация предложенных слов (обработка сообщений и callback_query)
   async (ctx) => {
-    if (ctx.message && "text" in ctx.message) {
-      const userInput = ctx.message.text;
-      await ctx.reply(`Вы ввели текст: ${userInput}`);
-    }
-
     if (ctx.callbackQuery && "data" in ctx.callbackQuery) {
       const action = ctx.callbackQuery.data;
 
-      if (action === "approve_word") {
-        // Принятие слова
+      if (action === "approve_word" || action === "reject_word") {
         const wordId = ctx.wizard.state.selectedWordId;
         const userId = ctx.from?.id;
 
-        if (wordId && userId) {
-          try {
-            const apiUrl = process.env.api_url;
-            const response = await postRequest(
-              `${apiUrl}/vocabulary/accept-suggested-word`,
-              {
-                suggestedWordId: wordId,
-                telegram_user_id: userId,
-              },
-              process.env.admintoken!
-            );
-
-            if (response.ok) {
-              await ctx.editMessageText("Слово успешно принято.");
-            } else {
-              const errorData = await response.json();
-              await ctx.reply(`Ошибка при принятии слова: ${errorData.message}`);
-            }
-          } catch (error) {
-            console.error("Ошибка при принятии слова:", error);
-            await ctx.reply("Произошла ошибка при принятии слова.");
-          }
-        } else {
+        if (!wordId || !userId) {
           await ctx.reply("Не удалось определить пользователя или слово.");
+          return;
         }
-      }
 
-      if (action === "reject_word") {
-        // Отклонение слова
-        const wordId = ctx.wizard.state.selectedWordId;
-        const userId = ctx.from?.id;
+        const apiUrl = process.env.api_url;
+        const actionUrl =
+          action === "approve_word"
+            ? `${apiUrl}/vocabulary/accept-suggested-word`
+            : `${apiUrl}/vocabulary/decline-suggested-word`;
 
-        if (wordId && userId) {
-          try {
-            const apiUrl = process.env.api_url;
-            const response = await fetch(`${apiUrl}/vocabulary/decline-suggested-word`, {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${process.env.admintoken}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({ suggestedWordId: wordId, telegram_user_id: userId }),
-            });
+        const response = await postRequest(
+          actionUrl,
+          { suggestedWordId: wordId, telegram_user_id: userId },
+          process.env.admintoken!
+        );
 
-            if (response.ok) {
-              await ctx.editMessageText("Слово успешно отклонено.");
-            } else {
-              const errorData = await response.json();
-              await ctx.reply(`Ошибка при отклонении слова: ${errorData.message}`);
-            }
-          } catch (error) {
-            console.error("Ошибка при отклонении слова:", error);
-            await ctx.reply("Произошла ошибка при отклонении слова.");
-          }
+        if (response.ok) {
+          await ctx.editMessageText(
+            action === "approve_word"
+              ? "Слово успешно принято."
+              : "Слово успешно отклонено."
+          );
         } else {
-          await ctx.reply("Не удалось определить пользователя или слово.");
+          const errorData = await response.json();
+          await ctx.reply(`Ошибка: ${errorData.message}`);
         }
-      }
-
-      if (action === "skip_word") {
+      } else if (action === "skip_word") {
         await ctx.reply("Слово пропущено.");
         return ctx.scene.enter("dictionary-wizard");
       }
