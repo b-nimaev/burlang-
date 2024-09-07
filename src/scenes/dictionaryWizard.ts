@@ -255,58 +255,33 @@ const dictionaryWizard = new Scenes.WizardScene<
 // Шаг 4: Обработка выбора слова для перевода и навигации
 dictionaryWizard.use(async (ctx, next) => {
   if (ctx.wizard.cursor === 4) {
-    // Проверка, что это callbackQuery с полем data
     if (ctx.callbackQuery && "data" in ctx.callbackQuery) {
-      const callbackData = (ctx.callbackQuery as any).data; // Casting to 'any' to access 'data'
-      // Обработка выбора слова для перевода
+      const callbackData = (ctx.callbackQuery as any).data;
+
+      // Обрабатываем выбор слова, используя _id
       if (callbackData.startsWith("select_word_")) {
-        const selectedWordIndex = parseInt(
-          callbackData.split("_").pop() || "0",
-          10
-        );
-        const page = ctx.session.page || 1;
-        const limit = 10;
+        const selectedWordId = callbackData.split("_").pop(); // Извлекаем _id слова
 
-        // Получаем данные о словах для перевода заново
-        const apiUrl = process.env.api_url;
-        const response = await fetch(
-          `${apiUrl}/vocabulary/get-words-paginated?page=${page}&limit=${limit}`,
-          {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${process.env.admintoken}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
-        const data = await response.json();
+        // Сохраняем _id выбранного слова в состоянии
+        ctx.wizard.state.selectedWordId = selectedWordId;
 
-        if (response.ok) {
-          const selectedWord = data.words[selectedWordIndex]; // Выбираем нужное слово
+        // Просим пользователя ввести перевод для выбранного слова
+        await sendOrEditMessage(ctx, "Введите перевод для выбранного слова:");
 
-          // Сохраняем _id выбранного слова в состоянии
-          ctx.wizard.state.selectedWordId = selectedWord._id;
-
-          // Просим пользователя ввести перевод для выбранного слова
-          await sendOrEditMessage(
-            ctx,
-            `Введите перевод для слова: ${selectedWord.text}`
-          );
-
-          // Переходим на следующий шаг для ввода перевода
-          ctx.wizard.selectStep(5);
-        } else {
-          await ctx.reply("Ошибка при получении данных.");
-        }
+        // Переход на следующий шаг (5), где будет вводиться перевод
+        ctx.wizard.selectStep(5);
       }
 
       // Обработка пагинации для кнопки "⬅️" (предыдущая страница)
+      if (callbackData === "back") {
+        await ctx.scene.enter("dictionary-wizard");
+      }
+
       if (callbackData === "prev_page") {
         const currentPage = ctx.session.page || 1;
         if (currentPage > 1) {
           const prevPage = currentPage - 1;
 
-          // Обновляем сессию и запрашиваем данные для предыдущей страницы
           ctx.session.page = prevPage;
           await fetchPaginatedWords(ctx, prevPage, 10);
         } else {
@@ -319,7 +294,6 @@ dictionaryWizard.use(async (ctx, next) => {
         const currentPage = ctx.session.page || 1;
         const limit = 10;
 
-        // Получаем данные о текущей странице, чтобы узнать общее количество слов
         const apiUrl = process.env.api_url;
         const response = await fetch(
           `${apiUrl}/vocabulary/get-words-paginated?page=${currentPage}&limit=${limit}`,
@@ -339,8 +313,6 @@ dictionaryWizard.use(async (ctx, next) => {
 
           if (currentPage < totalPages) {
             const nextPage = currentPage + 1;
-
-            // Обновляем сессию и запрашиваем данные для следующей страницы
             ctx.session.page = nextPage;
             await fetchPaginatedWords(ctx, nextPage, 10);
           } else {
@@ -351,13 +323,24 @@ dictionaryWizard.use(async (ctx, next) => {
         }
       }
 
-      // Подтверждаем callback query
       await ctx.answerCbQuery();
     }
   } else {
     return next();
   }
 });
+
+dictionaryWizard.use(async (ctx, next) => {
+  if (ctx.wizard.cursor === 5) {
+    if (ctx.message && "text" in ctx.message) {
+      const userInput = ctx.message.text
+      ctx.reply(userInput)
+
+    }
+  } else {
+    return next();
+  }
+})
 
 const dictionaryKeyboard = Markup.inlineKeyboard([
   [
@@ -395,6 +378,7 @@ dictionaryWizard.action("select_buryat", async (ctx) => {
 
 // Обработчик для предложения перевода к словам 
 dictionaryWizard.action("suggest_translate", async (ctx) => {
+  console.log(ctx.from)
   // Начальный запрос на получение доступных слов для перевода
   await fetchPaginatedWords(ctx, 1, 10);
 });
@@ -422,37 +406,34 @@ async function fetchPaginatedWords(
 
     if (response.ok) {
       const { words, totalWords } = data;
-
-      // Формируем результат и клавиатуру
+      
+      // Формируем сообщение с результатами
       const resultMessage = createResultMessage(words, totalWords, page, limit);
 
-      const selectionButtons = [
-        words
-          .slice(0, 5)
-          .map((_: ISuggestedWordModel, index: number) =>
-            Markup.button.callback(`${index + 1}`, `select_word_${index}`)
-          ),
-        words
-          .slice(5, 10)
-          .map((_: ISuggestedWordModel, index: number) =>
-            Markup.button.callback(`${index + 6}`, `select_word_${index + 5}`)
-          ),
-      ];
+      // Формируем клавиатуру, используя word._id
+      const selectionButtons = words.map((word: ISuggestedWordModel, index: number) =>
+        Markup.button.callback(`${index + 1}`, `select_word_${word._id}`)
+      );
 
+      // Разбиваем кнопки по два ряда (по 5 кнопок на ряд)
+      const rows = [];
+      for (let i = 0; i < selectionButtons.length; i += 5) {
+        rows.push(selectionButtons.slice(i, i + 5));
+      }
+
+      // Добавляем пагинацию в отдельный ряд
       const paginationButtons = [
         Markup.button.callback("⬅️", "prev_page"),
         Markup.button.callback("Назад", "back"),
         Markup.button.callback("➡️", "next_page"),
       ];
 
-      const selectionKeyboard = Markup.inlineKeyboard([
-        ...selectionButtons,
-        paginationButtons,
-      ]);
+      const selectionKeyboard = Markup.inlineKeyboard([...rows, paginationButtons]);
+
       ctx.session.page = page;
 
       await sendOrEditMessage(ctx, resultMessage, selectionKeyboard, reply);
-      ctx.wizard.selectStep(4);
+      ctx.wizard.selectStep(4); // Переход на шаг 4
     } else {
       await ctx.reply("Ошибка при получении данных.");
     }
