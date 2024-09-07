@@ -8,6 +8,7 @@ interface WizardState {
   language?: string;
   suggestion?: boolean;
   selectedWordId?: string; // Добавляем свойство для хранения _id выбранного слова
+  selectedDialect?: string
 }
 
 // Обработчик для начальной сцены
@@ -51,11 +52,14 @@ const dictionaryWizard = new Scenes.WizardScene<
             const apiUrl = process.env.api_url; // URL API из .env
             const adminToken = process.env.admintoken; // Bearer токен из .env
 
+            console.log(ctx.wizard.state.selectedDialect);
+
             // Тело запроса
             const requestBody = {
               text: userInput,
               language: language === "russian" ? "russian" : "buryat",
               id: userId,
+              dialect: ctx.wizard.state.selectedDialect ? ctx.wizard.state.selectedDialect : "khori"
             };
 
             // Отправка POST-запроса
@@ -107,8 +111,9 @@ const dictionaryKeyboard = Markup.inlineKeyboard([
     Markup.button.callback("Русский", "select_russian"),
     Markup.button.callback("Бурятский", "select_buryat"),
   ],
+  [Markup.button.callback("Модерация", "consider_suggested_words")], // Новая кнопка
   [Markup.button.callback("Предложить слово", "suggest_word")],
-  [Markup.button.callback("Рассмотреть предложенные слова", "consider_suggested_words")], // Новая кнопка
+  [Markup.button.callback("Предложить переводы", "suggest_translate")], // Новая кнопка
   [Markup.button.callback("Назад", "home")],
 ]);
 
@@ -133,6 +138,23 @@ dictionaryWizard.action("select_buryat", async (ctx) => {
   ctx.wizard.state.language = "buryat";
   await sendOrEditMessage(ctx, "Введите слово для перевода с бурятского:");
   return ctx.wizard.selectStep(1); // Переход к шагу 1
+});
+
+// Обработчик для предложения перевода к словам 
+dictionaryWizard.action("suggest_translate", async (ctx) => {
+  const languageSelectionKeyboard = Markup.inlineKeyboard([
+    [
+      Markup.button.callback("Русский", "suggest_russian"),
+      Markup.button.callback("Бурятский", "suggest_buryat"),
+    ],
+    [Markup.button.callback("Назад", "back")],
+  ]);
+
+  await sendOrEditMessage(
+    ctx,
+    "Выберите язык, на котором хотите предложить слово для корпуса:",
+    languageSelectionKeyboard
+  );
 });
 
 // Обработчик для предложения слова
@@ -162,14 +184,75 @@ dictionaryWizard.action("suggest_russian", async (ctx) => {
   return ctx.wizard.selectStep(2); // Переход к шагу 2
 });
 
-// Обработчик для предложения слова на бурятском языке
+// Массив бурятских диалектов
+const dialects = [
+  { value: "khori", label: "Хоринский" },
+  { value: "bulagat", label: "Булагатский" },
+  { value: "sartul", label: "Сартульский" },
+  { value: "unknown", label: "Не знаю" },
+  // Добавьте другие диалекты по необходимости
+];
+
+// Обработчик для предложения слова на бурятском языке с диалектами
 dictionaryWizard.action("suggest_buryat", async (ctx) => {
   ctx.wizard.state.language = "buryat";
+
+  // Если диалект уже выбран, получаем его из состояния, иначе используем первый по умолчанию
+  const selectedDialect = ctx.wizard.state.selectedDialect || dialects[0].value;
+
+  // Формируем клавиатуру с диалектами, где выбранный помечен значком ✅
+  const dialectButtons = dialects.map((dialect) => [
+    Markup.button.callback(
+      `${selectedDialect === dialect.value ? "✅ " : ""}${dialect.label}`,
+      `select_dialect_${dialect.value}`
+    ),
+  ]);
+
+  // Отправляем клавиатуру с диалектами
   await sendOrEditMessage(
     ctx,
-    "Введите слово или фразу, которую хотите отправить на перевод с бурятского:"
+    "Выберите диалект, на котором хотите предложить слово для корпуса:",
+    Markup.inlineKeyboard([...dialectButtons, [Markup.button.callback("Далее", "continue_with_dialect")]])
   );
-  return ctx.wizard.selectStep(2); // Переход к шагу 2
+});
+
+// Обработчик для выбора диалекта
+dialects.forEach((dialect) => {
+  dictionaryWizard.action(`select_dialect_${dialect.value}`, async (ctx) => {
+    // Обновляем выбранный диалект в состоянии
+    ctx.wizard.state.selectedDialect = dialect.value;
+
+    // Повторно отправляем сообщение с обновлённой клавиатурой
+    const selectedDialect = ctx.wizard.state.selectedDialect;
+
+    const dialectButtons = dialects.map((dialect) => [
+      Markup.button.callback(
+        `${selectedDialect === dialect.value ? "✅ " : ""}${dialect.label}`,
+        `select_dialect_${dialect.value}`
+      ),
+    ]);
+
+    await sendOrEditMessage(
+      ctx,
+      "Выберите диалект, на котором хотите предложить слово для корпуса:",
+      Markup.inlineKeyboard([...dialectButtons, [Markup.button.callback("Далее", "continue_with_dialect")]])
+    );
+  });
+});
+
+
+// Обработчик для продолжения после выбора диалекта
+dictionaryWizard.action("continue_with_dialect", async (ctx) => {
+  const selectedDialect = ctx.wizard.state.selectedDialect || dialects[0].value;
+
+  // Проверяем, выбрал ли пользователь "Не знаю"
+  const message = selectedDialect === "unknown"
+    ? "Вы выбрали: \"Не знаю\". Введите слово или фразу, диалект будет определён позже."
+    : `Вы выбрали диалект: ${dialects.find((d) => d.value === selectedDialect)?.label}. Введите слово или фразу:`;
+
+  await sendOrEditMessage(ctx, message);
+
+  return ctx.wizard.selectStep(2); // Переход к следующему шагу для ввода слова
 });
 
 dictionaryWizard.action("home", async (ctx) => {
