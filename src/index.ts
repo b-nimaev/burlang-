@@ -77,6 +77,9 @@ export const sendOrEditMessage = async (
     await ctx.reply(text, {
       parse_mode: "HTML",
       reply_markup: { inline_keyboard: inlineKeyboard },
+      link_preview_options: {
+        is_disabled: true
+      }
     });
   } else {
     if (ctx.updateType === "callback_query") {
@@ -86,6 +89,9 @@ export const sendOrEditMessage = async (
           reply_markup: {
             inline_keyboard: inlineKeyboard, // Передаем массив кнопок
           },
+          link_preview_options: {
+            is_disabled: true,
+          },
         });
       } catch (err) {
         // Игнорируем ошибку, если сообщение уже было отредактировано
@@ -94,6 +100,9 @@ export const sendOrEditMessage = async (
       await ctx.reply(text, {
         parse_mode: "HTML",
         reply_markup: { inline_keyboard: inlineKeyboard },
+        link_preview_options: {
+          is_disabled: true,
+        },
       });
     }
   }

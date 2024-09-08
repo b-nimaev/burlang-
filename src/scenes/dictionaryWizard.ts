@@ -336,7 +336,10 @@ dictionaryWizard.use(async (ctx, next) => {
               ctx.wizard.state.selectedDialect || dialects[0].value;
 
             // Формируем клавиатуру с диалектами, где выбранный помечен значком ✅
-            const dialectButtons = await renderKeyboardDialects(ctx, selectedDialect)
+            const dialectButtons = await renderKeyboardDialects(
+              ctx,
+              selectedDialect
+            );
 
             // Отправляем клавиатуру с диалектами
             await sendOrEditMessage(
@@ -527,7 +530,7 @@ dictionaryWizard.use(async (ctx, next) => {
           selectedDialect
         );
 
-        console.log(dialectButtons)
+        console.log(dialectButtons);
         // Отправляем клавиатуру с диалектами
         await sendOrEditMessage(
           ctx,
@@ -539,8 +542,12 @@ dictionaryWizard.use(async (ctx, next) => {
         );
       }
 
-      ctx.answerCbQuery()
-    } else {      
+      if (callbackData === "back") {
+        await fetchPaginatedWords(ctx);
+      }
+
+      ctx.answerCbQuery();
+    } else {
       await ctx.reply("Пожалуйста, введите перевод для выбранного слова.");
     }
   } else {
@@ -549,36 +556,46 @@ dictionaryWizard.use(async (ctx, next) => {
 });
 
 const dictionaryKeyboard = Markup.inlineKeyboard([
-  [
-    Markup.button.callback("Русский", "select_russian"),
-    Markup.button.callback("Бурятский", "select_buryat"),
-  ],
+  [Markup.button.callback("Найти слово", "select_language")],
+  // [
+  //   Markup.button.callback("Русский", "select_russian"),
+  //   Markup.button.callback("Бурятский", "select_buryat"),
+  // ],
   [Markup.button.callback("Модерация", "consider_suggested_words")], // Новая кнопка
   [Markup.button.callback("Предложить слово", "suggest_word")],
   [Markup.button.callback("Предложить переводы", "suggest_translate")], // Новая кнопка
   [Markup.button.callback("Назад", "home")],
 ]);
 
+const link = "https://t.me/bur_live";
+const how_to_use_dict =
+  "https://telegra.ph/Kak-vospolzovatsya-slovarem-httpstmeburlive-bot-09-08";
+const hot_to_vote = "https://telegra.ph/Kak-progolosovat-za-perevod-09-08";
+const how_to_suggest_translate =
+  "https://telegra.ph/Kak-dobavit-perevoda-k-slovu-09-08";
 // Убираем `ctx.wizard.next()` из `enter`
 dictionaryWizard.enter(async (ctx) => {
   sendOrEditMessage(
     ctx,
-    "<b>Словарь</b> \n\nВыберите язык для перевода или предложите слово для дальнейшего перевода нашим сообществом",
+    `<b>Словарь</b> \n\nВыберите раздел для начала работ\n\n<i><a href='${how_to_use_dict}'>Как воспользоваться словарем?</a>\n<a href='${hot_to_vote}'>Как проголосовать за перевод?</a>\n<a href='${link}'>Как предложить слово на перевод?</a>\n<a href='${how_to_suggest_translate}'>Как добавить перевод к слову?</a></i>`,
     dictionaryKeyboard
   );
 });
 
+const messageContentSelectRussianForTranslate = `<b>Словарь — Найти слово 🔎\n\n</b><i>Введите слово для перевода с русского:</i>`;
+const messageContentSelectBuryatForTranslate = `<b>Словарь — Найти слово 🔎\n\n</b><i>Введите слово для перевода с бурятского:</i>`;
+
 // Обработчики выбора языка
 dictionaryWizard.action("select_russian", async (ctx) => {
   ctx.wizard.state.language = "russian";
-  await sendOrEditMessage(ctx, "Введите слово для перевода с русского:");
+  await sendOrEditMessage(ctx, messageContentSelectRussianForTranslate);
   return ctx.wizard.selectStep(1); // Переход к шагу 1
 });
 
 // Обработчики выбора языка
 dictionaryWizard.action("select_buryat", async (ctx) => {
   ctx.wizard.state.language = "buryat";
-  await sendOrEditMessage(ctx, "Введите слово для перевода с бурятского:");
+  await sendOrEditMessage(ctx, messageContentSelectBuryatForTranslate);
   return ctx.wizard.selectStep(1); // Переход к шагу 1
 });
 
@@ -729,6 +746,11 @@ for (let i = 0; i < 10; i++) {
   });
 }
 
+const suggesWordHandlerMessageContent =
+  "<b>Предложение слова — Выбор языка ✍️</b>\n\nУкажите язык, на котором вы будете добавлять слово/слова для дальнейшего перевода нашим сообществом";
+const suggesWordHandlerSelectedLanguageBuryat =
+  "<b>Предложение слова — Выбор диалекта ✍️</b>\n\nУкажите диалект, на котором хотите добавить слово для дальнейшего перевода нашим сообществом";
+
 // Обработчик для предложения слова
 dictionaryWizard.action("suggest_word", async (ctx) => {
   const languageSelectionKeyboard = Markup.inlineKeyboard([
@@ -741,7 +763,7 @@ dictionaryWizard.action("suggest_word", async (ctx) => {
 
   await sendOrEditMessage(
     ctx,
-    "Выберите язык, на котором хотите предложить слово для корпуса:",
+    suggesWordHandlerMessageContent,
     languageSelectionKeyboard
   );
 });
@@ -764,68 +786,112 @@ dictionaryWizard.action("suggest_buryat", async (ctx) => {
   const selectedDialect = ctx.wizard.state.selectedDialect || dialects[0].value;
 
   // Формируем клавиатуру с диалектами, где выбранный помечен значком ✅
-  const dialectButtons = dialects.map((dialect) => [
+  const dialectButtons = dialects.map((dialect) =>
     Markup.button.callback(
       `${selectedDialect === dialect.value ? "✅ " : ""}${dialect.label}`,
-      `select_dialect_${dialect.value}`
-    ),
+      `select_dialect_for_suggest_translate_${dialect.value}`
+    )
+  );
+
+  // Группируем кнопки по две в строке
+  const groupedDialectButtons = [];
+  for (let i = 0; i < dialectButtons.length; i += 2) {
+    groupedDialectButtons.push(dialectButtons.slice(i, i + 2));
+  }
+
+  // Добавляем кнопку "Далее" в отдельную строку
+  groupedDialectButtons.push([
+    Markup.button.callback("Далее", "continue_with_dialect"),
   ]);
 
   // Отправляем клавиатуру с диалектами
   await sendOrEditMessage(
     ctx,
-    "Выберите диалект, на котором хотите предложить слово для корпуса:",
-    Markup.inlineKeyboard([
-      ...dialectButtons,
-      [Markup.button.callback("Далее", "continue_with_dialect")],
-    ])
+    suggesWordHandlerSelectedLanguageBuryat,
+    Markup.inlineKeyboard(groupedDialectButtons)
   );
 });
 
 // Обработчик для выбора диалекта
 dialects.forEach((dialect) => {
-  dictionaryWizard.action(`select_dialect_${dialect.value}`, async (ctx) => {
-    // Обновляем выбранный диалект в состоянии
-    ctx.wizard.state.selectedDialect = dialect.value;
+  dictionaryWizard.action(
+    `select_dialect_for_suggest_translate_${dialect.value}`,
+    async (ctx) => {
+      // Обновляем выбранный диалект в состоянии
+      ctx.wizard.state.selectedDialect = dialect.value;
 
-    // Повторно отправляем сообщение с обновлённой клавиатурой
-    const selectedDialect = ctx.wizard.state.selectedDialect;
+      // Повторно отправляем сообщение с обновлённой клавиатурой
+      const selectedDialect = ctx.wizard.state.selectedDialect;
 
-    const dialectButtons = dialects.map((dialect) => [
-      Markup.button.callback(
-        `${selectedDialect === dialect.value ? "✅ " : ""}${dialect.label}`,
-        `select_dialect_${dialect.value}`
-      ),
-    ]);
+      // Формируем кнопки с диалектами, где выбранный помечен значком ✅
+      const dialectButtons = dialects.map((dialect) =>
+        Markup.button.callback(
+          `${selectedDialect === dialect.value ? "✅ " : ""}${dialect.label}`,
+          `select_dialect_for_suggest_translate_${dialect.value}`
+        )
+      );
 
-    await sendOrEditMessage(
-      ctx,
-      "Выберите диалект, на котором хотите предложить слово для корпуса:",
-      Markup.inlineKeyboard([
-        ...dialectButtons,
-        [Markup.button.callback("Далее", "continue_with_dialect")],
-      ])
-    );
-  });
+      // Группируем кнопки по две в строке
+      const groupedDialectButtons = [];
+      for (let i = 0; i < dialectButtons.length; i += 2) {
+        groupedDialectButtons.push(dialectButtons.slice(i, i + 2));
+      }
+
+      // Добавляем кнопку "Далее" в отдельную строку
+      groupedDialectButtons.push([
+        Markup.button.callback("Далее", "continue_with_dialect"),
+      ]);
+
+      // Отправляем обновлённое сообщение с клавиатурой
+      await sendOrEditMessage(
+        ctx,
+        suggesWordHandlerSelectedLanguageBuryat,
+        Markup.inlineKeyboard(groupedDialectButtons)
+      );
+    }
+  );
 });
 
 // Обработчик для продолжения после выбора диалекта
 dictionaryWizard.action("continue_with_dialect", async (ctx) => {
   const selectedDialect = ctx.wizard.state.selectedDialect || dialects[0].value;
 
+  let message = `<b>Предложение слова — Ввод слова или фразы ✍️</b>\n\n`;
+
+  message += `Вы выбрали язык: <b>Бурятский</b>\n`
   // Проверяем, выбрал ли пользователь "Не знаю"
-  const message =
+  message +=
     selectedDialect === "unknown"
-      ? 'Вы выбрали: "Не знаю". Введите слово или фразу, диалект будет определён позже.'
-      : `Вы выбрали диалект: ${
+      ? "<b>Вы не выбрали диалект</b>"
+      : `Вы выбрали диалект: <b>${
           dialects.find((d) => d.value === selectedDialect)?.label
-        }. Введите слово или фразу:`;
+        } </b>\n\n<i>Введите слово или фразу:</i>`;
+
+  // const actionKeyboard = Markup.inlineKeyboard([
+  // Markup.button.callback("Назад", "suggest_buryat"),
+  // ]);
 
   await sendOrEditMessage(ctx, message);
 
   return ctx.wizard.selectStep(2); // Переход к следующему шагу для ввода слова
 });
 
+dictionaryWizard.action("select_language", async (ctx) => {
+  try {
+    let message = `<b>Словарь — Найти слово 🔎\n\n</b>`;
+    message += `<i>Выберите язык, на котором хотите найти слово</i>`;
+    const keyboard = Markup.inlineKeyboard([
+      [
+        Markup.button.callback("Русский", "select_russian"),
+        Markup.button.callback("Бурятский", "select_buryat"),
+      ],
+      [Markup.button.callback("Назад", "back")],
+    ]);
+    await sendOrEditMessage(ctx, message, keyboard)
+  } catch (error) {
+    console.log(error);
+  }
+});
 dictionaryWizard.action("home", async (ctx) => {
   console.log(ctx.wizard.state.language);
   ctx.scene.enter("home");
@@ -1041,7 +1107,6 @@ dictionaryWizard.action("next_page", async (ctx) => {
 
 async function renderKeyboardDialects(ctx: MyContext, selectedDialect: string) {
   try {
-    
     // Формируем клавиатуру с диалектами, где выбранный помечен значком ✅
     const dialectButtons = dialects.map((dialect) => [
       Markup.button.callback(
@@ -1050,10 +1115,10 @@ async function renderKeyboardDialects(ctx: MyContext, selectedDialect: string) {
       ),
     ]);
 
-    return dialectButtons
+    return dialectButtons;
   } catch (error) {
     console.log(error);
-    return []
+    return [];
   }
 }
 
