@@ -48,16 +48,22 @@ async function postRequest(url: string, body: object, token: string) {
 }
 
 // Функция для формирования сообщения с результатами
-function createResultMessage(
+async function createResultMessage(
   words: ISuggestedWordModel[],
   total_count: number,
   page: number,
   limit: number
 ) {
-  let resultMessage = `Результаты ${page * limit - limit + 1}-${Math.min(
+  // Вычисляем общее количество страниц
+  const totalPages = Math.ceil(total_count / limit);
+
+  let resultMessage = `<b>Словарь — Добавление переводов ✍️</b>\n\n`;
+  // Формируем строку с указанием текущей страницы и общего количества страниц
+  resultMessage += `<b>Страница ${page}/${totalPages}</b>\n`;
+  resultMessage += `<i>Показано  ${page * limit - limit + 1}-${Math.min(
     page * limit,
     total_count
-  )} из ${total_count}:\n\n`;
+  )} из ${total_count} слов которым нужно добавить перевод</i>\n\n`;
 
   words.forEach((word, index) => {
     const languageFullName = languageNames[word.language] || word.language;
@@ -65,10 +71,15 @@ function createResultMessage(
       ? dialectNames[word.dialect] || word.dialect
       : "";
 
-    resultMessage += `${index + 1}. ${word.text} – <i>${languageFullName}${
+    // Если индекс не равен 10, добавляем пробел после номера
+    const indexStr = index + 1 === 10 ? `${index + 1}. ` : `${index + 1}.  `;
+
+    resultMessage += `${indexStr}${word.text} – <i>${languageFullName}${
       dialectFullName ? `, ${dialectFullName}` : ""
     }</i>\n`;
   });
+
+  resultMessage += `\n<i><b>Выберите номер слова, к которому будете добавлять перевод</b></i>`;
 
   return resultMessage;
 }
@@ -98,7 +109,7 @@ async function fetchWordsOnApproval(
       const { words, total_count } = data;
 
       // Формируем результат и клавиатуру
-      const resultMessage = createResultMessage(
+      const resultMessage = await createResultMessage(
         words,
         total_count,
         page,
@@ -298,68 +309,73 @@ dictionaryWizard.use(async (ctx, next) => {
             // Обновляем стейты в wizard
             ctx.wizard.state.selectedWordId = selectedWordId;
             ctx.wizard.state.language =
-              word.language === "russian" || "русский" ? "buryat" : "russian"; // Обновляем язык выбранного слова
+              word.language.toLowerCase() === "russian" ||
+              word.language.toLowerCase() === "русский"
+                ? "russian"
+                : "buryat"; // Обновляем язык выбранного слова
             ctx.wizard.state.selectedDialect =
               ctx.wizard.state.selectedDialect || "khori"; // Обновляем диалект, если он есть
             ctx.wizard.state.normalized_text = word.normalized_text || ""; // Обновляем normalized_text, если он есть
 
             // Проверяем, если язык слова не "русский" или "russian", выводим диалект
             const dialectInfo =
-              word.language.toLowerCase() !== "russian" &&
-              word.language.toLowerCase() !== "русский"
+              ctx.wizard.state.language === "buryat"
                 ? `\nДиалект: ${word.dialect || "не указан"}`
                 : "";
-
-            // клавиатуру
-
-            // console.log(word);
 
             // Отображаем информацию о слове пользователю
             let wordDetails = `<b>Добавление перевода ✍️</b>\n\nВыбранное слово: <b>${word.text}</b>\nЯзык: ${word.language}${dialectInfo}\n\n`;
 
             if (word.translations_u.length) {
-              wordDetails += `<b>Предложенные переводы:</b>`;
-              wordDetails += `\nНа рассмотрении: `;
+              wordDetails += `<b>Предложенные переводы:</b>\nНа рассмотрении: `;
               for (let i = 0; i < word.translations_u.length; i++) {
                 const translation = word.translations_u[i];
-                if (word.translations_u.length === i + 1) {
-                  wordDetails += `${translation.text}`;
-                } else {
-                  wordDetails += `${translation.text}, `;
+                wordDetails += `${translation.text}`;
+                if (i < word.translations_u.length - 1) {
+                  wordDetails += ", ";
                 }
-                // wordDetails += `\nязык: ${translation.language}`;
               }
             }
 
-            // Если диалект уже выбран, получаем его из состояния, иначе используем первый по умолчанию
-            const selectedDialect =
-              ctx.wizard.state.selectedDialect || dialects[0].value;
+            // Проверяем язык и формируем клавиатуру в зависимости от языка
+            let keyboard;
+            if (ctx.wizard.state.language === "buryat") {
+              // Для бурятского языка формируем клавиатуру с диалектами
+              const selectedDialect =
+                ctx.wizard.state.selectedDialect || dialects[0].value;
+              const dialectButtons = dialects.map((dialect) =>
+                Markup.button.callback(
+                  `${selectedDialect === dialect.value ? "✅ " : ""}${
+                    dialect.label
+                  }`,
+                  `select_dialect_${dialect.value}`
+                )
+              );
 
-            // Формируем клавиатуру с диалектами, где выбранный помечен значком ✅
-            const dialectButtons = await renderKeyboardDialects(
-              ctx,
-              selectedDialect
-            );
+              // Группируем кнопки по две в ряд
+              const groupedDialectButtons = [];
+              for (let i = 0; i < dialectButtons.length; i += 2) {
+                groupedDialectButtons.push(dialectButtons.slice(i, i + 2));
+              }
 
-            // Отправляем клавиатуру с диалектами
-            await sendOrEditMessage(
-              ctx,
-              "Выберите диалект, на котором хотите предложить слово для корпуса:",
-              Markup.inlineKeyboard([
-                ...dialectButtons,
-                [Markup.button.callback("Далее", "continue_with_dialect")],
-              ])
-            );
+              // Добавляем кнопку "Назад" в отдельную строку
+              groupedDialectButtons.push([
+                Markup.button.callback("Назад", "back"),
+              ]);
 
-            // wordDetails += `\nНормализованный вид: ${word.normalized_text}`
-            // wordDetails += `\nНормализованный вид: ${word.normalized_text}`
+              keyboard = Markup.inlineKeyboard(groupedDialectButtons);
+            } else {
+              // Для русского языка только кнопка "Назад"
+              keyboard = Markup.inlineKeyboard([
+                Markup.button.callback("Назад", "back"),
+              ]);
+            }
+
+            // Отправляем сообщение с информацией о слове и клавиатурой
             await sendOrEditMessage(
               ctx,
               `${wordDetails}\n\nВведите перевод для этого слова:`,
-              Markup.inlineKeyboard([
-                ...dialectButtons,
-                [Markup.button.callback("Назад", "back")],
-              ])
+              keyboard
             );
 
             // Переход на следующий шаг (5), где будет вводиться перевод
@@ -601,7 +617,6 @@ dictionaryWizard.action("select_buryat", async (ctx) => {
 
 // Обработчик для предложения перевода к словам
 dictionaryWizard.action("suggest_translate", async (ctx) => {
-  console.log(ctx.from);
   // Начальный запрос на получение доступных слов для перевода
   await fetchPaginatedWords(ctx, 1, 10);
 });
@@ -631,8 +646,12 @@ async function fetchPaginatedWords(
       const { words, totalWords } = data;
 
       // Формируем сообщение с результатами
-      const resultMessage = createResultMessage(words, totalWords, page, limit);
-
+      const resultMessage = await createResultMessage(
+        words,
+        totalWords,
+        page,
+        limit
+      );
       // Формируем клавиатуру, используя word._id
       const selectionButtons = words.map(
         (word: ISuggestedWordModel, index: number) =>
@@ -858,7 +877,7 @@ dictionaryWizard.action("continue_with_dialect", async (ctx) => {
 
   let message = `<b>Предложение слова — Ввод слова или фразы ✍️</b>\n\n`;
 
-  message += `Вы выбрали язык: <b>Бурятский</b>\n`
+  message += `Вы выбрали язык: <b>Бурятский</b>\n`;
   // Проверяем, выбрал ли пользователь "Не знаю"
   message +=
     selectedDialect === "unknown"
@@ -887,7 +906,7 @@ dictionaryWizard.action("select_language", async (ctx) => {
       ],
       [Markup.button.callback("Назад", "back")],
     ]);
-    await sendOrEditMessage(ctx, message, keyboard)
+    await sendOrEditMessage(ctx, message, keyboard);
   } catch (error) {
     console.log(error);
   }
