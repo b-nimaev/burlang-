@@ -1,5 +1,5 @@
 import express from "express";
-import { Context, Markup, Scenes, session, Telegraf } from "telegraf";
+import { Markup, Scenes, session, Telegraf } from "telegraf";
 import dotenv from "dotenv";
 import bodyParser from "body-parser";
 import morgan from "morgan";
@@ -32,7 +32,7 @@ if (mode === "development") {
   const fetchNgrokUrl = async () => {
     try {
       const res = await fetch("http://127.0.0.1:4040/api/tunnels");
-      const json = await res.json();
+      const json: any = await res.json();
       const secureTunnel = json.tunnels[0].public_url;
       console.log(`Ngrok URL: ${secureTunnel}`);
       await setWebhook(secureTunnel);
@@ -180,7 +180,7 @@ bot.start(async (ctx) => {
       }
     );
 
-    const fetchuserResult = await getuser.json()
+    const fetchuserResult: any = await getuser.json()
 
     if (fetchuserResult.is_exists === false) {
     

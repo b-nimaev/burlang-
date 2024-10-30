@@ -1,16 +1,33 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "commonjs",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "moduleResolution": "node",
-    "resolveJsonModule": true,
-    "outDir": "./dist",
-    "sourceMap": true
+    /* Основные настройки */
+    "target": "ES2020",                        // Используем возможности ES2020
+    "module": "CommonJS",                        // CommonJS для совместимости с Node.js
+    "lib": ["ES2020"],                         // Подключаем библиотеки ES2020
+    "outDir": "dist",                          // Папка для скомпилированного кода
+    "rootDir": "src",                          // Корневая папка исходного кода
+    "moduleResolution": "node",                // Разрешение модулей как в Node.js
+    "esModuleInterop": true,                   // Совместимость с ES-модулями
+    "allowSyntheticDefaultImports": true,      // Позволяет импортировать по умолчанию
+    "forceConsistentCasingInFileNames": true,  // Проверка регистра имен файлов
+    "resolveJsonModule": true,                 // Импорт JSON-файлов
+    "sourceMap": true,                         // Генерация карт исходников
+    /* Строгая типизация */
+    "strict": true,                            // Включает все строгие проверки
+    "noImplicitAny": true,                     // Запрещает неявный тип any
+    "strictNullChecks": true,                  // Строгие проверки на null
+    "strictFunctionTypes": true,               // Строгие типы функций
+    "strictBindCallApply": true,               // Строгие проверки bind, call, apply
+    "strictPropertyInitialization": true,      // Инициализация свойств класса
+    /* Оптимизация */
+    "skipLibCheck": true,                      // Пропуск проверки библиотек
+    "noUnusedLocals": true,                    // Предупреждение о неиспользуемых переменных
+    "noUnusedParameters": true,                // Предупреждение о неиспользуемых параметрах
+    "noImplicitReturns": true,                 // Предупреждение о неявных return
+    "noFallthroughCasesInSwitch": true,        // Предупреждение о fallthrough в switch
+    "useDefineForClassFields": true,            // Соответствие полей класса стандарту ES
+    "typeRoots": ["./node_modules/@types", "./@types"],
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": ["src", "@types", "types"],                 // Включаем папку src и types
+  "exclude": ["node_modules", "dist"]          // Исключаем node_modules и dist
 }
