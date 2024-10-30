@@ -5,6 +5,7 @@ import bodyParser from "body-parser";
 import morgan from "morgan";
 import { MyContext } from "./types/MyContext";
 import dictionaryWizard from "./scenes/dictionaryWizard";
+import dashboardWizard from "./scenes/dashboardWizard";
 
 dotenv.config(); // Загружаем переменные окружения
 
@@ -56,12 +57,13 @@ app.listen(port, () => {
   console.log(`Сервер запущен на порту ${port} в режиме ${mode}`);
 });
 
-// Создание инлайн-кнопок для главной сцены
 const homeKeyboard = Markup.inlineKeyboard([
-  [Markup.button.callback("Словарь", "dictionary")],
+  [
+    Markup.button.webApp("Самоучитель", "https://burlive.ru"), // Замените на ваш URL веб-приложения
+    Markup.button.callback("Словарь", "dictionary"),
+  ],
   [Markup.button.callback("Предложения", "sentences")],
   [Markup.button.callback("Личный кабинет", "dashboard")],
-  [Markup.button.callback("Самоучитель", "self-teacher")],
 ]);
 
 // Функция для отправки или редактирования сообщений
@@ -154,19 +156,82 @@ const stage = new Scenes.Stage<MyContext>([
   homeScene,
   dictionaryWizard,
   sentencesScene,
-  dashboardScene,
+  dashboardWizard,
   selfTeacherScene,
 ]);
 
 // Использование middleware сессий и сцен
 bot.use(session());
 bot.use(stage.middleware());
+        
+const apiUrl = process.env.api_url;
 
-bot.start((ctx) => ctx.scene.enter("home"));
+bot.start(async (ctx) => {
+  try {
+    console.log(ctx.from)
+    const getuser = await fetch(
+      `${apiUrl}/telegram/user/is-exists/${ctx.from.id}`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.admintoken}`,
+        },
+      }
+    );
+
+    const fetchuserResult = await getuser.json()
+
+    if (fetchuserResult.is_exists === false) {
+    
+      const createTelegramUser = await fetch(`${apiUrl}/telegram/create-user/`,
+        {
+          method: 'POST',
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.admintoken}`,
+          },
+          body: JSON.stringify(ctx.from)
+        }
+      )
+      
+      const createTelegramUserResult = await createTelegramUser.json()
+
+      console.log(createTelegramUserResult)
+    }
+
+    console.log(fetchuserResult)
+
+    ctx.scene.enter("home")
+  
+  } catch (error) {
+    console.log(error)
+  }
+});
 
 // Обработка callback для инлайн-кнопок
 bot.action("home", (ctx) => ctx.scene.enter("home"));
 bot.action("dictionary", (ctx) => ctx.scene.enter("dictionary-wizard"));
 bot.action("sentences", (ctx) => ctx.scene.enter("sentences"));
-bot.action("dashboard", (ctx) => ctx.scene.enter("dashboard"));
-bot.action("self-teacher", (ctx) => ctx.scene.enter("self-teacher"));
+bot.action("dashboard", (ctx) => ctx.scene.enter("dashboard-wizard"));
+bot.action("self-teacher", (ctx) => {
+  // Ответьте на callback_query, чтобы убрать индикатор загрузки на кнопке
+  ctx.answerCbQuery();
+
+  // Отправьте сообщение с кнопкой web_app
+  return ctx.reply('Откройте веб-приложение, нажав на кнопку ниже:', {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          {
+            text: 'Открыть веб-приложение',
+            web_app: {
+              url: 'https://your-web-app-url.com' // Замените на URL вашего веб-приложения
+            }
+          }
+        ]
+      ]
+    }
+  });
+});
+
