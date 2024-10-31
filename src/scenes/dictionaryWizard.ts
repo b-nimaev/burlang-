@@ -604,7 +604,7 @@ const dictionaryKeyboard = Markup.inlineKeyboard([
   //   Markup.button.callback("Русский", "select_russian"),
   //   Markup.button.callback("Бурятский", "select_buryat"),
   // ],
-  [Markup.button.callback("Модерация", "consider_suggested_words")], // Новая кнопка
+  // [Markup.button.callback("Модерация", "consider_suggested_words")], // Новая кнопка
   [Markup.button.callback("Предложить слово", "suggest_word")],
   [Markup.button.callback("Предложить переводы", "suggest_translate")], // Новая кнопка
   [Markup.button.callback("Назад", "home")],
