@@ -32,6 +32,6 @@ jobs:
             git pull &&
             cd /home/deployer/burlive &&
             git pull &&
-            docker-compose build bot &&
-            docker-compose up -d bot
+            docker compose build bot &&
+            docker compose up -d bot
           '
