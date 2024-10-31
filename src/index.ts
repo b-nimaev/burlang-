@@ -48,7 +48,7 @@ if (mode === "development") {
 
 // Middleware для обработки запросов от Telegram
 app.use(express.json());
-app.use(`/${secretPath}`, (req, res) => {
+app.use(`${secretPath}`, (req, res) => {
   bot.handleUpdate(req.body, res);
 });
 
