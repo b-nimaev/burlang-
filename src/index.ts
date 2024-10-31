@@ -52,6 +52,10 @@ app.use(`/${secretPath}`, (req, res) => {
   bot.handleUpdate(req.body, res);
 });
 
+app.get(`hello`, async (_res, req) => {
+  req.send(`Hello world!`)
+})
+
 // Запуск сервера
 app.listen(port, () => {
   console.log(`Сервер запущен на порту ${port} в режиме ${mode}`);
