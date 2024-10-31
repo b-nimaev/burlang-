@@ -164,7 +164,7 @@ const stage = new Scenes.Stage<MyContext>([
 bot.use(session());
 bot.use(stage.middleware());
         
-const apiUrl = process.env.api_url;
+const apiUrl = process.env.api_url || 'http://express-api:5000';
 
 bot.start(async (ctx) => {
   try {
