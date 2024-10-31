@@ -16,14 +16,17 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "glob": "^11.0.0",
+    "inflight": "^1.0.6",
+    "lru-cache": "^11.0.1",
     "morgan": "^1.10.0",
+    "rimraf": "^6.0.1",
     "telegraf": "^4.16.3"
   },
   "devDependencies": {
     "@telegraf/types": "^7.1.0",
     "@types/body-parser": "^1.19.5",
     "@types/cors": "^2.8.17",
-    "@types/dotenv": "^8.2.0",
     "@types/express": "^4.17.21",
     "@types/morgan": "^1.9.9",
     "@types/node": "^22.5.4",

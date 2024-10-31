@@ -27,6 +27,7 @@
     "noFallthroughCasesInSwitch": true,        // Предупреждение о fallthrough в switch
     "useDefineForClassFields": true,            // Соответствие полей класса стандарту ES
     "typeRoots": ["./node_modules/@types", "./@types"],
+    "types": ["node"],
   },
   "include": ["src", "@types", "types"],                 // Включаем папку src и types
   "exclude": ["node_modules", "dist"]          // Исключаем node_modules и dist
