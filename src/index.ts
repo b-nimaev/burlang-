@@ -20,8 +20,8 @@ const mode = process.env.mode || "development";
 // Функция для установки вебхука
 const setWebhook = async (url: string) => {
   try {
-    await bot.telegram.setWebhook(`${url}/${secretPath}`);
-    console.log(`Webhook установлен: ${url}/${secretPath}`);
+    await bot.telegram.setWebhook(`${url}${secretPath}`);
+    console.log(`Webhook установлен: ${url}${secretPath}`);
   } catch (error) {
     console.error("Ошибка при установке вебхука:", error);
   }
