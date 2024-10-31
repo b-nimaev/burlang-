@@ -1,4 +1,4 @@
-name: Deploy Telegram Bot
+name: Deploy Telegram Bot 2
 
 on:
   push:
