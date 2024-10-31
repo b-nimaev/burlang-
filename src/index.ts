@@ -43,7 +43,7 @@ if (mode === "development") {
   fetchNgrokUrl();
 } else if (mode === "production") {
   const siteUrl = process.env.site_url || "https://example.com";
-  setWebhook(`${siteUrl}${secretPath.startsWith("/") ? "" : "/"}${secretPath}`);
+  setWebhook(`${siteUrl}${secretPath}`);
 }
 
 // Middleware для обработки запросов от Telegram
