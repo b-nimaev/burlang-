@@ -35,7 +35,7 @@ if (mode === "development") {
       const json: any = await res.json();
       const secureTunnel = json.tunnels[0].public_url;
       console.log(`Ngrok URL: ${secureTunnel}`);
-      await setWebhook(secureTunnel);
+      await setWebhook(secureTunnel + '/');
     } catch (error) {
       console.error("Ошибка при получении URL из ngrok:", error);
     }
@@ -48,7 +48,7 @@ if (mode === "development") {
 
 // Middleware для обработки запросов от Telegram
 app.use(express.json());
-app.use(`${secretPath}`, (req, res) => {
+app.use(`/${secretPath}`, (req, res) => {
   bot.handleUpdate(req.body, res);
 });
 

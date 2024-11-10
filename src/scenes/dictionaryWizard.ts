@@ -100,7 +100,7 @@ async function fetchWordsOnApproval(
   try {
     const apiUrl = process.env.api_url;
     const response = await fetch(
-      `${apiUrl}/vocabulary/get-words-on-approval?page=${page}&limit=${limit}`,
+      `${apiUrl}/vocabulary/approval?page=${page}&limit=${limit}`,
       {
         method: "GET",
         headers: {
@@ -201,12 +201,12 @@ const dictionaryWizard = new Scenes.WizardScene<
             const requestBody = {
               text: userInput,
               language: language === "russian" ? "russian" : "buryat",
-              id: userId,
+              telegram_user_id: userId,
               dialect: ctx.wizard.state.selectedDialect || "khori",
             };
 
             const response = await postRequest(
-              `${apiUrl}/vocabulary/suggest-word`,
+              `${apiUrl}/vocabulary/suggest-words`,
               requestBody,
               adminToken
             );
@@ -314,7 +314,7 @@ dictionaryWizard.use(async (ctx, next) => {
           // Запрос на API для получения данных о выбранном слове
           const apiUrl = process.env.api_url;
           const response = await fetch(
-            `${apiUrl}/vocabulary/get-confirmed-word?wordId=${selectedWordId}`,
+            `${apiUrl}/vocabulary/confirmed-word?wordId=${selectedWordId}`,
             {
               method: "GET",
               headers: {
@@ -346,7 +346,7 @@ dictionaryWizard.use(async (ctx, next) => {
                 : "";
 
             // Отображаем информацию о слове пользователю
-            let wordDetails = `<b>Добавление перевода ✍️</b>\n\nВыбранное слово: <b>${word.text}</b>\nЯзык: ${word.language}${dialectInfo}\n\n`;
+            let wordDetails = `<b>Добавление перевода ✍️</b>\n\nВыбранное слово: <b>${word.text}</b>\nЯзык: ${word.language}${dialectInfo}`;
 
             if (word.translations_u.length) {
               wordDetails += `<b>Предложенные переводы:</b>\nНа рассмотрении: `;
@@ -435,7 +435,7 @@ dictionaryWizard.use(async (ctx, next) => {
 
         const apiUrl = process.env.api_url;
         const response = await fetch(
-          `${apiUrl}/vocabulary/get-words-paginated?page=${currentPage}&limit=${limit}`,
+          `${apiUrl}/vocabulary/paginated?page=${currentPage}&limit=${limit}`,
           {
             method: "GET",
             headers: {
@@ -604,7 +604,7 @@ const dictionaryKeyboard = Markup.inlineKeyboard([
   //   Markup.button.callback("Русский", "select_russian"),
   //   Markup.button.callback("Бурятский", "select_buryat"),
   // ],
-  // [Markup.button.callback("Модерация", "consider_suggested_words")], // Новая кнопка
+  [Markup.button.callback("Модерация", "consider_suggested_words")], // Новая кнопка
   [Markup.button.callback("Предложить слово", "suggest_word")],
   [Markup.button.callback("Предложить переводы", "suggest_translate")], // Новая кнопка
   [Markup.button.callback("Назад", "home")],
@@ -666,7 +666,7 @@ async function fetchPaginatedWords(
   try {
     const apiUrl = process.env.api_url;
     const response = await fetch(
-      `${apiUrl}/vocabulary/get-words-paginated?page=${page}&limit=${limit}`,
+      `${apiUrl}/vocabulary/paginated?page=${page}&limit=${limit}`,
       {
         method: "GET",
         headers: {
@@ -679,6 +679,11 @@ async function fetchPaginatedWords(
 
     if (response.ok) {
       const { words, totalWords } = data;
+
+      if (totalWords === 0) {
+        ctx.answerCbQuery(`Предложенных слов нет`)
+        return
+      }
 
       // Формируем сообщение с результатами
       const resultMessage = await createResultMessage(
@@ -971,7 +976,7 @@ for (let i = 0; i < 10; i++) {
     // Получаем данные заново, чтобы выбрать правильный элемент
     const apiUrl = process.env.api_url;
     const response = await fetch(
-      `${apiUrl}/vocabulary/get-words-on-approval?page=${page}&limit=${limit}`,
+      `${apiUrl}/vocabulary/approval?page=${page}&limit=${limit}`,
       {
         method: "GET",
         headers: {
@@ -1041,6 +1046,7 @@ dictionaryWizard.action("approve_word", async (ctx) => {
 
       await fetchWordsOnApproval(ctx, page, limit, true);
     } else {
+      console.log(await response.json())
       await ctx.reply(`Ошибка при принятии слова`);
     }
   } catch (error) {
@@ -1129,7 +1135,7 @@ dictionaryWizard.action("next_page", async (ctx) => {
     // Запрашиваем данные для текущей страницы, чтобы узнать общее количество слов
     const apiUrl = process.env.api_url;
     const response = await fetch(
-      `${apiUrl}/vocabulary/get-words-on-approval?page=${currentPage}&limit=${limit}`,
+      `${apiUrl}/vocabulary/approval?page=${currentPage}&limit=${limit}`,
       {
         method: "GET",
         headers: {
