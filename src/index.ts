@@ -13,7 +13,7 @@ const app = express();
 app.use(bodyParser.json());
 app.use(morgan("dev"));
 const bot = new Telegraf<MyContext>(process.env.BOT_TOKEN || "");
-const secretPath = process.env.secret_path || "/telegraf/secret_path";
+const secretPath = `/${process.env.secret_path}` || "/telegraf/secret_path";
 const port = process.env.PORT || 3000;
 const mode = process.env.mode || "development";
 
@@ -48,7 +48,7 @@ if (mode === "development") {
 
 // Middleware для обработки запросов от Telegram
 app.use(express.json());
-app.use(`/${secretPath}`, (req, res) => {
+app.use(`${secretPath}`, (req, res) => {
   bot.handleUpdate(req.body, res);
 });
 
