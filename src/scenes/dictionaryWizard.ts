@@ -349,7 +349,7 @@ dictionaryWizard.use(async (ctx, next) => {
             let wordDetails = `<b>Добавление перевода ✍️</b>\n\nВыбранное слово: <b>${word.text}</b>\nЯзык: ${word.language}${dialectInfo}`;
 
             if (word.translations_u.length) {
-              wordDetails += `<b>Предложенные переводы:</b>\nНа рассмотрении: `;
+              wordDetails += `\n\n<b>Предложенные переводы </b>\nНа рассмотрении: `;
               for (let i = 0; i < word.translations_u.length; i++) {
                 const translation = word.translations_u[i];
                 wordDetails += `${translation.text}`;
