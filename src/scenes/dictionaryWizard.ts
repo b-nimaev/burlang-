@@ -507,6 +507,7 @@ dictionaryWizard.use(async (ctx, next) => {
             );
 
             const fetchuserResult = (await getuser.json()) as getUserResponse;
+            console.log(fetchuserResult)
             // Подготовка тела запроса
             const requestBody = {
               word_id: wordId,
@@ -514,9 +515,9 @@ dictionaryWizard.use(async (ctx, next) => {
               translate: translation, // Введенный перевод
               dialect: ctx.wizard.state.selectedDialect,
               normalized_text: translation.trim().toLowerCase() || "",
-              telegram_user_id: fetchuserResult.user._id,
+              telegram_user_id: fetchuserResult.user.id,
             };
-
+            console.log(requestBody)
             const response = await fetch(
               `${apiUrl}/vocabulary/suggest-translate`,
               {

@@ -35,7 +35,7 @@ if (mode === "development") {
       const json: any = await res.json();
       const secureTunnel = json.tunnels[0].public_url;
       console.log(`Ngrok URL: ${secureTunnel}`);
-      await setWebhook(secureTunnel + '/');
+      await setWebhook(secureTunnel);
     } catch (error) {
       console.error("Ошибка при получении URL из ngrok:", error);
     }
