@@ -75,9 +75,8 @@ async function createResultMessage(
     // Если индекс не равен 10, добавляем пробел после номера
     const indexStr = index + 1 === 10 ? `${index + 1}. ` : `${index + 1}.  `;
 
-    resultMessage += `${indexStr}${word.text} – <i>${languageFullName}${
-      dialectFullName ? `, ${dialectFullName}` : ""
-    }</i>\n`;
+    resultMessage += `${indexStr}${word.text} – <i>${languageFullName}${dialectFullName ? `, ${dialectFullName}` : ""
+      }</i>\n`;
   });
 
   resultMessage += `\n<i><b>Выберите номер слова, к которому будете добавлять перевод</b></i>`;
@@ -158,6 +157,11 @@ async function fetchWordsOnApproval(
   }
 }
 
+interface ResponseData {
+  message: string;
+  burlivedb: any;
+}
+
 // Сцена "Словарь"
 const dictionaryWizard = new Scenes.WizardScene<
   MyContext & { wizard: { state: WizardState } }
@@ -168,18 +172,67 @@ const dictionaryWizard = new Scenes.WizardScene<
   // Шаг 1: Получение текста от пользователя и его перевод
   async (ctx) => {
     if (ctx.message && "text" in ctx.message) {
+      
       const userInput = ctx.message.text;
       const language = ctx.wizard.state.language;
-
-      if (language) {
-        await ctx.reply(
-          `Перевод для "${userInput}" с ${language}: ${userInput}`
-        );
-      } else {
-        await ctx.reply("Пожалуйста, выберите язык для перевода.");
+      console.log(language)
+      if (userInput === `/exit`) {
+        return await render_select_language_section(ctx, true);
       }
 
-       ctx.scene.enter("dictionary-wizard"); // Возврат к сцене после обработки
+      try {
+        const apiUrl = process.env.api_url;
+        const adminToken = process.env.admintoken || "";
+
+        const requestBody = {
+          userInput: userInput,
+          target_language: language,
+          telegram_user_id: ctx.from?.id,
+        };
+
+        const response = await postRequest(
+          `${apiUrl}/vocabulary/translate`,
+          requestBody,
+          adminToken
+        );
+
+        if (response.ok) {
+          const result = await response.json() as ResponseData;
+          let burlive_translate = ``
+          if (result.burlivedb) {
+            for (let i = 0; i < result.burlivedb.length; i++) {
+              if (result.burlivedb.length - 1 === i) {
+                burlive_translate += `${result.burlivedb[i].text}`
+              } else {
+                burlive_translate += `${result.burlivedb[i].text}, `
+              }
+            }
+          }
+          const message_header = `<b>Словарь — Результат поиска 🔎</b>\n\n`
+          const message_footer = `<b>burlive</b>: ${burlive_translate}\n<b>burlang api:</b> ${result.message}\n\n<i>Отправьте /exit для выхода в меню, или введите следующее слово для поиска</i>`
+          await ctx.reply(`${message_header}${message_footer}`, {
+            parse_mode: "HTML"
+          })
+        } else {
+          const errorMsg = await response.text();
+          await ctx.reply(`Ошибка при отправке предложения: ${errorMsg}`);
+        }
+      } catch (error) {
+        console.error("Ошибка при отправке:", error);
+        await ctx.reply(
+          "Произошла ошибка при отправке вашего предложения."
+        );
+      }
+
+      // if (language) {
+      //   await ctx.reply(
+      //     `Перевод для "${userInput}" с ${language}: ${userInput}`
+      //   );
+      // } else {
+      //   await ctx.reply("Пожалуйста, выберите язык для перевода.");
+      // }
+
+      // ctx.scene.enter("dictionary-wizard"); // Возврат к сцене после обработки
     } else {
       await ctx.reply("Пожалуйста, введите текст.");
     }
@@ -332,21 +385,28 @@ dictionaryWizard.use(async (ctx, next) => {
             ctx.wizard.state.selectedWordId = selectedWordId;
             ctx.wizard.state.language =
               word.language.toLowerCase() === "russian" ||
-              word.language.toLowerCase() === "русский"
+                word.language.toLowerCase() === "русский"
                 ? "russian"
                 : "buryat"; // Обновляем язык выбранного слова
             ctx.wizard.state.selectedDialect =
               ctx.wizard.state.selectedDialect || "khori"; // Обновляем диалект, если он есть
             ctx.wizard.state.normalized_text = word.normalized_text || ""; // Обновляем normalized_text, если он есть
 
+            let dialectLabeled
+            if (ctx.wizard.state.language === 'buryat') {
+              if (word.dialect === 'khori') {
+                dialectLabeled = '<b>Хоринский</b>'
+              }
+            }
+
             // Проверяем, если язык слова не "русский" или "russian", выводим диалект
             const dialectInfo =
               ctx.wizard.state.language === "buryat"
-                ? `\nДиалект: ${word.dialect || "не указан"}`
+                ? `\nДиалект: ${dialectLabeled || "не указан"}`
                 : "";
 
             // Отображаем информацию о слове пользователю
-            let wordDetails = `<b>Добавление перевода ✍️</b>\n\nВыбранное слово: <b>${word.text}</b>\nЯзык: ${word.language}${dialectInfo}`;
+            let wordDetails = `<b>Добавление перевода ✍️</b>\n\nВыбранное слово: <b>${word.text}</b>\nЯзык: ${word.language === 'buryat' ? "<b>Бурятский</b>" : '<b>Русский</b>'}${dialectInfo}`;
 
             if (word.translations_u.length) {
               wordDetails += `\n\n<b>Предложенные переводы </b>\nНа рассмотрении: `;
@@ -358,19 +418,19 @@ dictionaryWizard.use(async (ctx, next) => {
                 }
               }
             }
-
+            let sendmessage
             // Проверяем язык и формируем клавиатуру в зависимости от языка
             let keyboard;
-            if (ctx.wizard.state.language === "buryat") {
+            console.log(ctx.wizard.state.language)
+            if (ctx.wizard.state.language !== "buryat") {
               // Для бурятского языка формируем клавиатуру с диалектами
               const selectedDialect =
                 ctx.wizard.state.selectedDialect || dialects[0].value;
               const dialectButtons = dialects.map((dialect) =>
                 Markup.button.callback(
-                  `${selectedDialect === dialect.value ? "✅ " : ""}${
-                    dialect.label
+                  `${selectedDialect === dialect.value ? "✅ " : ""}${dialect.label
                   }`,
-                  `select_dialect_${dialect.value}`
+                  `select_dialect_for_suggest_translate_"${dialect.value}`
                 )
               );
 
@@ -381,24 +441,29 @@ dictionaryWizard.use(async (ctx, next) => {
               }
 
               // Добавляем кнопку "Назад" в отдельную строку
-              groupedDialectButtons.push([
-                Markup.button.callback("Назад", "back"),
-              ]);
+              // groupedDialectButtons.push([
+              //   Markup.button.callback("Назад", "back"),
+              // ]);
 
               keyboard = Markup.inlineKeyboard(groupedDialectButtons);
+              sendmessage = `${wordDetails}\n\n<b>Выберите диалект и Введите перевод для этого слова</b>`
+              // Отправляем сообщение с информацией о слове и клавиатурой
+              await sendOrEditMessage(
+                ctx,
+                sendmessage,
+                keyboard
+              );
             } else {
-              // Для русского языка только кнопка "Назад"
-              keyboard = Markup.inlineKeyboard([
-                Markup.button.callback("Назад", "back"),
-              ]);
+              console.log('else')
+              sendmessage = `${wordDetails}\n\n<b>Отправьте перевод для этого слова на русском языке</b>`
+              // Отправляем сообщение с информацией о слове и клавиатурой
+              await sendOrEditMessage(
+                ctx,
+                sendmessage
+              );
             }
 
-            // Отправляем сообщение с информацией о слове и клавиатурой
-            await sendOrEditMessage(
-              ctx,
-              `${wordDetails}\n\nВведите перевод для этого слова:`,
-              keyboard
-            );
+
 
             // Переход на следующий шаг (5), где будет вводиться перевод
             ctx.wizard.selectStep(5);
@@ -531,9 +596,22 @@ dictionaryWizard.use(async (ctx, next) => {
             );
 
             if (response.ok) {
-              await ctx.reply(
+              const infoUserSuccesSuggest = await ctx.reply(
                 `Ваш перевод для слова успешно отправлен: ${translation}`
               );
+              console.log(infoUserSuccesSuggest.message_id)
+              console.log(infoUserSuccesSuggest.from?.id)
+              if (infoUserSuccesSuggest.from) {
+                if (infoUserSuccesSuggest.from.id) {
+                  setTimeout(async () => {
+                    if (infoUserSuccesSuggest.from) {
+                      if (infoUserSuccesSuggest.from.id) {
+                        await ctx.telegram.deleteMessage(infoUserSuccesSuggest.chat.id, infoUserSuccesSuggest.message_id);
+                      }
+                    }
+                  }, 2000); // Удалит сообщение через 2 секунды
+                }
+              }
             } else {
               await ctx.reply(
                 `Ошибка при отправке перевода`
@@ -561,27 +639,33 @@ dictionaryWizard.use(async (ctx, next) => {
 
       // Обрабатываем выбор слова, используя _id
       if (callbackData.startsWith("select_dialect_for_suggest_translate_")) {
-        const selectedDialect = callbackData.split("_").pop(); // Извлекаем выбранный диалект
+        const selectedDialect: string = callbackData.split("_").pop().replace("\"", ""); // Извлекаем выбранный диалект
         // Сохраняем диалект в состоянии
         ctx.wizard.state.selectedDialect = selectedDialect;
 
         // Получаем предыдущее сообщение, мне лень править типы
         // @ts-ignore
         const message = ctx.update.callback_query.message;
-
-        const dialectButtons = await renderKeyboardDialects(
-          ctx,
-          selectedDialect
+        const dialectButtons = dialects.map((dialect) =>
+          Markup.button.callback(
+            `${selectedDialect === dialect.value ? "✅ " : ""}${dialect.label
+            }`,
+            `select_dialect_for_suggest_translate_"${dialect.value}`
+          )
         );
+        // Группируем кнопки по две в ряд
+        const groupedDialectButtons = [];
+        for (let i = 0; i < dialectButtons.length; i += 2) {
+          groupedDialectButtons.push(dialectButtons.slice(i, i + 2));
+        }
 
-        console.log(dialectButtons);
         // Отправляем клавиатуру с диалектами
         await sendOrEditMessage(
           ctx,
           message.text,
           Markup.inlineKeyboard([
-            ...dialectButtons,
-            [Markup.button.callback("Назад", "back")],
+            ...groupedDialectButtons,
+            // [Markup.button.callback("Назад", "back")],
           ])
         );
       }
@@ -731,79 +815,79 @@ async function fetchPaginatedWords(
 }
 
 // Обработчики для выбора слова по индексу для перевода
-for (let i = 0; i < 10; i++) {
-  dictionaryWizard.action(`select_word_for_translation_${i}`, async (ctx) => {
-    const page = ctx.session.page || 1;
-    const limit = 10;
+// for (let i = 0; i < 10; i++) {
+//   dictionaryWizard.action(`select_word_for_translation_${i}`, async (ctx) => {
+//     const page = ctx.session.page || 1;
+//     const limit = 10;
 
-    // Получаем данные заново, чтобы выбрать правильный элемент
-    const apiUrl = process.env.api_url;
-    const response: any = await fetch(
-      `${apiUrl}/vocabulary/get-words-for-translation?page=${page}&limit=${limit}`,
-      {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${process.env.admintoken}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-    const data = await response.json();
+//     // Получаем данные заново, чтобы выбрать правильный элемент
+//     const apiUrl = process.env.api_url;
+//     const response: any = await fetch(
+//       `${apiUrl}/vocabulary/get-words-for-translation?page=${page}&limit=${limit}`,
+//       {
+//         method: "GET",
+//         headers: {
+//           Authorization: `Bearer ${process.env.admintoken}`,
+//           "Content-Type": "application/json",
+//         },
+//       }
+//     );
+//     const data = await response.json();
 
-    if (response.ok) {
-      const selectedWord = data.words[i]; // Выбираем нужное слово по индексу
+//     if (response.ok) {
+//       const selectedWord = data.words[i]; // Выбираем нужное слово по индексу
 
-      // Сохраняем _id выбранного слова в сессии
-      ctx.wizard.state.selectedWordId = selectedWord._id;
+//       // Сохраняем _id выбранного слова в сессии
+//       ctx.wizard.state.selectedWordId = selectedWord._id;
 
-      // Просим пользователя ввести перевод для выбранного слова
-      await ctx.reply(`Введите перевод для слова: ${selectedWord.text}`);
+//       // Просим пользователя ввести перевод для выбранного слова
+//       await ctx.reply(`Введите перевод для слова: ${selectedWord.text}`);
 
-      // Переходим на следующий шаг для ввода перевода
-      ctx.wizard.selectStep(5);
+//       // Переходим на следующий шаг для ввода перевода
+//       ctx.wizard.selectStep(5);
 
-      // Обработчик для получения перевода от пользователя
-      dictionaryWizard.on("text", async (ctx) => {
-        const translationInput = ctx.message?.text;
-        if (!translationInput) {
-          await ctx.reply("Пожалуйста, введите корректный перевод.");
-          return;
-        }
+//       // Обработчик для получения перевода от пользователя
+//       dictionaryWizard.on("text", async (ctx) => {
+//         const translationInput = ctx.message?.text;
+//         if (!translationInput) {
+//           await ctx.reply("Пожалуйста, введите корректный перевод.");
+//           return;
+//         }
 
-        // Отправляем перевод на сервер
-        const requestBody = {
-          word_id: selectedWord._id,
-          translation: translationInput,
-          telegram_user_id: ctx.from?.id,
-        };
+//         // Отправляем перевод на сервер
+//         const requestBody = {
+//           word_id: selectedWord._id,
+//           translation: translationInput,
+//           telegram_user_id: ctx.from?.id,
+//         };
 
-        const response = await fetch(`${apiUrl}/vocabulary/suggest-translate`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${process.env.admintoken}`,
-          },
-          body: JSON.stringify(requestBody),
-        });
+//         const response = await fetch(`${apiUrl}/vocabulary/suggest-translate`, {
+//           method: "POST",
+//           headers: {
+//             "Content-Type": "application/json",
+//             Authorization: `Bearer ${process.env.admintoken}`,
+//           },
+//           body: JSON.stringify(requestBody),
+//         });
 
-        if (response.ok) {
-          await ctx.reply(
-            `Ваш перевод для слова "${selectedWord.text}" успешно предложен: ${translationInput}`
-          );
-        } else {
-          await ctx.reply(
-            `Ошибка при предложении перевода`
-          );
-        }
+//         if (response.ok) {
+//           await ctx.reply(
+//             `Ваш перевод для слова "${selectedWord.text}" успешно предложен: ${translationInput}`
+//           );
+//         } else {
+//           await ctx.reply(
+//             `Ошибка при предложении перевода`
+//           );
+//         }
 
-        // Возвращаемся к главной сцене после обработки перевода
-        return ctx.scene.enter("dictionary-wizard");
-      });
-    } else {
-      await ctx.reply("Ошибка при получении данных.");
-    }
-  });
-}
+//         // Возвращаемся к главной сцене после обработки перевода
+//         return ctx.scene.enter("dictionary-wizard");
+//       });
+//     } else {
+//       await ctx.reply("Ошибка при получении данных.");
+//     }
+//   });
+// }
 
 const suggesWordHandlerMessageContent =
   "<b>Предложение слова — Выбор языка ✍️</b>\n\nУкажите язык, на котором вы будете добавлять слово/слова для дальнейшего перевода нашим сообществом";
@@ -922,9 +1006,8 @@ dictionaryWizard.action("continue_with_dialect", async (ctx) => {
   message +=
     selectedDialect === "unknown"
       ? "<b>Вы не выбрали диалект</b>"
-      : `Вы выбрали диалект: <b>${
-          dialects.find((d) => d.value === selectedDialect)?.label
-        } </b>\n\n<i>Введите слово или фразу:</i>`;
+      : `Вы выбрали диалект: <b>${dialects.find((d) => d.value === selectedDialect)?.label
+      } </b>\n\n<i>Введите слово или фразу:</i>`;
 
   // const actionKeyboard = Markup.inlineKeyboard([
   // Markup.button.callback("Назад", "suggest_buryat"),
@@ -935,7 +1018,8 @@ dictionaryWizard.action("continue_with_dialect", async (ctx) => {
   return ctx.wizard.selectStep(2); // Переход к следующему шагу для ввода слова
 });
 
-dictionaryWizard.action("select_language", async (ctx) => {
+dictionaryWizard.action("select_language", async (ctx) => await render_select_language_section(ctx));
+async function render_select_language_section(ctx: MyContext, reply?: boolean) {
   try {
     let message = `<b>Словарь — Найти слово 🔎\n\n</b>`;
     message += `<i>Выберите язык, на котором хотите найти слово</i>`;
@@ -946,11 +1030,11 @@ dictionaryWizard.action("select_language", async (ctx) => {
       ],
       [Markup.button.callback("Назад", "back")],
     ]);
-    await sendOrEditMessage(ctx, message, keyboard);
+    await sendOrEditMessage(ctx, message, keyboard, reply);
   } catch (error) {
     console.log(error);
   }
-});
+}
 dictionaryWizard.action("home", async (ctx) => {
   console.log(ctx.wizard.state.language);
   ctx.scene.enter("home");
@@ -1123,7 +1207,7 @@ dictionaryWizard.action("prev_page", async (ctx) => {
     return await fetchWordsOnApproval(ctx, prevPage, 10);
   } catch (error) {
     return ctx.reply(`Ошибка при обработке action`)
-    
+
   }
 });
 
@@ -1172,21 +1256,21 @@ dictionaryWizard.action("next_page", async (ctx) => {
   }
 });
 
-async function renderKeyboardDialects(_ctx: MyContext, selectedDialect: string) {
-  try {
-    // Формируем клавиатуру с диалектами, где выбранный помечен значком ✅
-    const dialectButtons = dialects.map((dialect) => [
-      Markup.button.callback(
-        `${selectedDialect === dialect.value ? "✅ " : ""}${dialect.label}`,
-        `select_dialect_for_suggest_translate_${dialect.value}`
-      ),
-    ]);
+// async function renderKeyboardDialects(_ctx: MyContext, selectedDialect: string) {
+//   try {
+//     // Формируем клавиатуру с диалектами, где выбранный помечен значком ✅
+//     const dialectButtons = dialects.map((dialect) => [
+//       Markup.button.callback(
+//         `${selectedDialect === dialect.value ? "✅ " : ""}${dialect.label}`,
+//         `select_dialect_for_suggest_translate_${dialect.value}`
+//       ),
+//     ]);
 
-    return dialectButtons;
-  } catch (error) {
-    console.log(error);
-    return [];
-  }
-}
+//     return dialectButtons;
+//   } catch (error) {
+//     console.log(error);
+//     return [];
+//   }
+// }
 
 export default dictionaryWizard;

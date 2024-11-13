@@ -63,15 +63,25 @@ const dashboardWizard = new Scenes.WizardScene<
 
 const greetingMessage = `<b>Личный кабинет</b>`
 const dashboardKeyboard = Markup.inlineKeyboard([
-  [Markup.button.callback("Информация о проекте", "home")],
+  [Markup.button.callback("Информация о проекте", "about")],
   // [Markup.button.callback("Мои данные", "home")],
   [Markup.button.callback("Справочные материалы", "home")],
-  [Markup.button.callback("🏆 Получите бонусы", "home")],
+  [Markup.button.callback("💰 Зарабатывайте с нами", "home")],
   [
     Markup.button.callback("Главная", "home"),
     Markup.button.url("Обратная связь", "https://t.me/frntdev"), // Ссылка на обратную связь
   ],
 ]);
+
+dashboardWizard.action(`about`, async (ctx: MyContext) => {
+  try {
+
+    ctx.answerCbQuery()
+
+  } catch (error) {
+    console.log(error)
+  }
+})
 
 // Убираем `ctx.wizard.next()` из `enter`
 dashboardWizard.enter(async (ctx) => {

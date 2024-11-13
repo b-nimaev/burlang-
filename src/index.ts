@@ -124,6 +124,12 @@ homeScene.enter((ctx) =>
     homeKeyboard
   )
 );
+homeScene.on("message", async (ctx) => sendOrEditMessage(
+  ctx,
+  `<b>Самоучитель бурятского языка</b>\n\nКаждое взаимодействие с ботом, 
+влияет на сохранение и дальнейшее развитие Бурятского языка\n\nВыберите раздел, чтобы приступить`,
+  homeKeyboard
+))
 
 // Создание сцены "Предложения"
 const sentencesScene = new Scenes.BaseScene<MyContext>("sentences");
@@ -167,7 +173,7 @@ const stage = new Scenes.Stage<MyContext>([
 // Использование middleware сессий и сцен
 bot.use(session());
 bot.use(stage.middleware());
-        
+
 const apiUrl = process.env.api_url || 'http://express-api:5000';
 
 bot.start(async (ctx) => {
@@ -187,7 +193,7 @@ bot.start(async (ctx) => {
     const fetchuserResult: any = await getuser.json()
 
     if (fetchuserResult.is_exists === false) {
-    
+
       const createTelegramUser = await fetch(`${apiUrl}/telegram/create-user/`,
         {
           method: 'POST',
@@ -198,7 +204,7 @@ bot.start(async (ctx) => {
           body: JSON.stringify(ctx.from)
         }
       )
-      
+
       const createTelegramUserResult = await createTelegramUser.json()
 
       console.log(createTelegramUserResult)
@@ -207,7 +213,7 @@ bot.start(async (ctx) => {
     console.log(fetchuserResult)
 
     ctx.scene.enter("home")
-  
+
   } catch (error) {
     console.log(error)
   }
@@ -239,3 +245,4 @@ bot.action("self-teacher", (ctx) => {
   });
 });
 
+bot.on("message", async (ctx: MyContext) => await ctx.scene.enter("home"))
