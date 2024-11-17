@@ -53,7 +53,7 @@ app.use(`${secretPath}`, (req, res) => {
 });
 
 app.get(`hello`, async (_res, req) => {
-  req.send(`Hello world!`)
+  req.send(`Hello world!!`)
 })
 
 // Запуск сервера
