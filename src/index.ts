@@ -78,7 +78,7 @@ export const sendOrEditMessage = async (
   reply?: boolean
 ) => {
   const inlineKeyboard = buttons?.reply_markup?.inline_keyboard || []; // Убедитесь, что кнопки существуют или используем пустой массив
-
+  console.log(`Send or edit message`)
   if (reply) {
     await ctx.reply(text, {
       parse_mode: "HTML",
@@ -178,7 +178,7 @@ const apiUrl = process.env.api_url || 'http://express-api:5000';
 
 bot.start(async (ctx) => {
   try {
-    console.log(ctx.from)
+
     const getuser = await fetch(
       `${apiUrl}/telegram/user/is-exists/${ctx.from.id}`,
       {
@@ -210,10 +210,52 @@ bot.start(async (ctx) => {
       console.log(createTelegramUserResult)
     }
 
-    console.log(fetchuserResult)
-
     ctx.scene.enter("home")
 
+  } catch (error) {
+    console.log(error)
+  }
+});
+homeScene.start(async (ctx: MyContext): Promise<void> => {
+  try {
+
+    if (!ctx.from) {
+      return
+    }
+
+    const getuser = await fetch(
+      `${apiUrl}/telegram/user/is-exists/${ctx.from.id}`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.admintoken}`,
+        },
+      }
+    );
+
+    const fetchuserResult: any = await getuser.json()
+
+    if (fetchuserResult.is_exists === false) {
+
+      const createTelegramUser = await fetch(`${apiUrl}/telegram/create-user/`,
+        {
+          method: 'POST',
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.admintoken}`,
+          },
+          body: JSON.stringify(ctx.from)
+        }
+      )
+
+      const createTelegramUserResult = await createTelegramUser.json()
+
+      console.log(createTelegramUserResult)
+    }
+
+    ctx.scene.enter("home")
+    return 
   } catch (error) {
     console.log(error)
   }
